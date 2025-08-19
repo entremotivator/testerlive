@@ -9,3 +9,6 @@ seaborn
 requests
 wordpress_auth
 supabase
+python-dotenv==1.0.0
+hashlib-compat==1.0.1
+datetime
