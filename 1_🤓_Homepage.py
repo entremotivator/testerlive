@@ -16,8 +16,19 @@ if 'user_role' not in st.session_state:
 if 'token' not in st.session_state:
     st.session_state.token = None
 
-# Define allowed roles - ONLY subscriber and administrator
-ALLOWED_ROLES = ['subscriber', 'administrator']
+# Security configuration - ONLY these roles are allowed
+AUTHORIZED_ROLES = {
+    'subscriber': {
+        'name': 'Subscriber',
+        'access_level': 'standard',
+        'description': 'Credit dashboard access'
+    },
+    'administrator': {
+        'name': 'Administrator', 
+        'access_level': 'full',
+        'description': 'Full system privileges'
+    }
+}
 
 def initialize_auth():
     """Initialize the WordPressAuth instance with secrets."""
@@ -29,63 +40,76 @@ def initialize_auth():
         st.error(f"Missing secret configuration: {e}")
         st.stop()
 
-def is_role_allowed(user_role):
-    """Check if user role is in the allowed list."""
+def validate_user_access(user_role):
+    """
+    Validate if user role has access to the system.
+    Returns tuple: (is_authorized, role_info)
+    """
     if not user_role:
-        return False
-    return user_role.lower() in ALLOWED_ROLES
+        return False, None
+    
+    normalized_role = user_role.lower().strip()
+    
+    if normalized_role in AUTHORIZED_ROLES:
+        return True, AUTHORIZED_ROLES[normalized_role]
+    
+    return False, None
 
 def handle_login(username, password, auth):
-    """Handle user login with strict role verification."""
+    """Handle user login with comprehensive role validation."""
     try:
-        # Get authentication token
+        # Step 1: Get authentication token
         token = auth.get_token(username, password)
-        
-        if token and auth.verify_token(token):
-            user_role = auth.get_user_role(token)
-            
-            # Strict role checking - only allow subscriber and administrator
-            if not is_role_allowed(user_role):
-                st.sidebar.error("🚫 **Access Denied**")
-                st.sidebar.warning(f"""
-                **Insufficient Privileges**
-                
-                Your role: {user_role or 'Unknown'}
-                
-                **Allowed roles:**
-                - ✅ Subscriber
-                - ✅ Administrator
-                
-                **To gain access:**
-                [**Contact Support**](https://vipbusinesscredit.com/)
-                """)
-                return False
-            
-            # Allow access for subscriber and administrator only
-            st.session_state.authenticated = True
-            st.session_state.user_role = user_role.lower()
-            st.session_state.token = token
-            st.sidebar.success(f"✅ Welcome, {user_role.title()}!")
-            st.rerun()
-            return True
-            
-        else:
+        if not token:
             st.sidebar.error("❌ Invalid credentials")
             return False
+        
+        # Step 2: Verify token
+        if not auth.verify_token(token):
+            st.sidebar.error("❌ Token verification failed")
+            return False
+        
+        # Step 3: Get and validate user role
+        user_role = auth.get_user_role(token)
+        is_authorized, role_info = validate_user_access(user_role)
+        
+        if not is_authorized:
+            st.sidebar.error("🚫 **Access Denied**")
+            st.sidebar.warning(f"""
+            **Unauthorized Role: {user_role or 'Unknown'}**
+            
+            **System Access is Limited To:**
+            - ✅ Subscriber accounts
+            - ✅ Administrator accounts
+            
+            **Your role is not authorized for this system.**
+            
+            [**Request Access**](https://vipbusinesscredit.com/)
+            """)
+            return False
+        
+        # Step 4: Grant access
+        st.session_state.authenticated = True
+        st.session_state.user_role = user_role.lower()
+        st.session_state.token = token
+        st.sidebar.success(f"✅ Welcome, {role_info['name']}!")
+        st.sidebar.info(f"Access Level: {role_info['description']}")
+        st.rerun()
+        return True
             
     except Exception as e:
-        st.sidebar.error(f"Login error: {str(e)}")
+        st.sidebar.error(f"Authentication error: {str(e)}")
         return False
 
 def logout():
-    """Handle user logout."""
-    st.session_state.authenticated = False
-    st.session_state.user_role = None
-    st.session_state.token = None
+    """Handle user logout and clear session."""
+    for key in ['authenticated', 'user_role', 'token']:
+        if key in st.session_state:
+            del st.session_state[key]
     st.rerun()
 
 def sidebar_content():
-    """Handle sidebar content - login form or user info."""
+    """Handle sidebar content with security-focused UI."""
     with st.sidebar:
         # Logo
         try:
@@ -95,44 +119,47 @@ def sidebar_content():
         
         if not st.session_state.authenticated:
             # Login Form
-            st.markdown("### 🔐 Login")
+            st.markdown("### 🔐 Secure Login")
+            
+            # Security notice
+            st.info("🔒 Restricted Access System")
             
             with st.form("sidebar_login_form"):
-                username = st.text_input("Username", placeholder="Enter username")
-                password = st.text_input("Password", type="password", placeholder="Enter password")
-                login_button = st.form_submit_button("Login", use_container_width=True)
+                username = st.text_input("Username", placeholder="WordPress username")
+                password = st.text_input("Password", type="password", placeholder="WordPress password")
+                login_button = st.form_submit_button("🔐 Authenticate", use_container_width=True)
                 
                 if login_button and username and password:
-                    auth = initialize_auth()
-                    handle_login(username, password, auth)
+                    with st.spinner("Validating credentials and permissions..."):
+                        auth = initialize_auth()
+                        handle_login(username, password, auth)
             
-            # Access information
+            # Access control information
             st.markdown("---")
-            st.markdown("**Access Requirements**")
-            st.info("""
-            **Allowed Roles:**
-            - ✅ Administrator
-            - ✅ Subscriber
+            st.markdown("**🔐 Access Control**")
             
-            **Not Allowed:**
-            - ❌ Customer
-            - ❌ Other roles
-            """)
+            with st.expander("View Authorized Roles"):
+                for role_key, role_data in AUTHORIZED_ROLES.items():
+                    st.markdown(f"✅ **{role_data['name']}** - {role_data['description']}")
+                
+                st.markdown("❌ **All other roles** - Access denied")
             
-            st.markdown("[🌟 Get Access](https://vipbusinesscredit.com/)")
+            st.markdown("[📞 Request Access](https://vipbusinesscredit.com/)")
                 
         else:
-            # User info and logout
-            st.success(f"👤 {st.session_state.user_role.title()}")
+            # Authenticated user info
+            role_info = AUTHORIZED_ROLES.get(st.session_state.user_role, {})
+            st.success(f"👤 {role_info.get('name', st.session_state.user_role.title())}")
+            st.caption(f"🔑 {role_info.get('description', 'System access')}")
             
-            if st.button("🚪 Logout", use_container_width=True):
+            if st.button("🚪 Secure Logout", use_container_width=True):
                 logout()
             
             st.markdown("---")
-            st.info("📌 Select a page above to navigate")
+            st.info("📌 Navigate using the menu above")
 
 def main_content():
-    """Display the main home page content."""
+    """Display main content with role-based features."""
     col1, col2, col3 = st.columns([1, 2, 1])
     
     with col2:
@@ -143,131 +170,108 @@ def main_content():
             st.title("💳 VIP Credit Systems")
 
         st.title("VIP Credit Systems")
-        st.subheader("Your Comprehensive Credit Management Solution")
+        st.subheader("Secure Credit Management Platform")
 
         if st.session_state.authenticated:
-            # Welcome message for authenticated users
+            # Role-specific welcome
+            role_info = AUTHORIZED_ROLES.get(st.session_state.user_role, {})
+            
             if st.session_state.user_role == 'administrator':
-                st.info("🛠️ **Administrator Access** - Full system privileges")
+                st.success("🛠️ **Administrator Dashboard** - Full system access granted")
             elif st.session_state.user_role == 'subscriber':
-                st.info("📊 **Subscriber Access** - Credit dashboard enabled")
+                st.success("📊 **Subscriber Dashboard** - Credit monitoring access granted")
 
-            # Introduction for authenticated users
-            st.write("""
-            Welcome to **VIP Credit Systems**! Your comprehensive credit management dashboard is ready. 
-            Use the navigation menu above to access all features and start optimizing your credit profile.
+            st.write(f"""
+            Welcome to your secure **VIP Credit Systems** dashboard. You are logged in with 
+            **{role_info.get('name', 'authorized')}** privileges, providing you with 
+            {role_info.get('description', 'system access')}.
             """)
 
-            # Feature categories
-            st.markdown("## 🎯 Available Features")
+            # Feature sections based on role
+            st.markdown("## 🎯 Your Available Features")
             
-            # Credit Overview Section
-            with st.expander("📊 Credit Overview", expanded=True):
+            # Core features for all authorized users
+            with st.expander("📊 Credit Monitoring", expanded=True):
                 st.markdown("""
-                - **Credit Score Overview** - Real-time credit score monitoring
-                - **Credit Utilization** - Track your credit usage across all accounts
-                - **Payment History** - Comprehensive payment tracking
-                - **Credit Report Summary** - Detailed credit report analysis
+                - **Real-time Credit Score Tracking** - Monitor score changes instantly
+                - **Credit Utilization Analysis** - Optimize your credit usage ratios
+                - **Payment History Dashboard** - Track payment patterns and trends
+                - **Credit Report Integration** - Comprehensive report analysis
                 """)
 
-            # Account Management Section
             with st.expander("🔧 Account Management"):
                 st.markdown("""
-                - **Credit Inquiries** - Monitor hard and soft credit pulls
-                - **Credit Limits** - Track and optimize credit limits
-                - **Debt-to-Income Ratio** - Calculate and monitor DTI
-                - **Account Balances** - Overview of all loan and credit card balances
+                - **Credit Inquiry Monitoring** - Track hard and soft credit pulls
+                - **Credit Limit Optimization** - Maximize available credit efficiently
+                - **Debt-to-Income Calculator** - Monitor and improve DTI ratios
+                - **Balance Management** - Strategic balance optimization
                 """)
 
-            # Analytics Section
+            # Advanced features
+            if st.session_state.user_role == 'administrator':
+                with st.expander("🛠️ Administrator Tools"):
+                    st.markdown("""
+                    - **User Management** - Manage system access and permissions
+                    - **System Configuration** - Configure platform settings
+                    - **Advanced Analytics** - Deep-dive reporting and insights
+                    - **Security Monitoring** - Track system access and usage
+                    """)
+
             with st.expander("📈 Analytics & Insights"):
                 st.markdown("""
-                - **Account Age Analysis** - Track credit history length
-                - **Monthly Payment Tracking** - Monitor payment patterns
-                - **Credit Account Breakdown** - Detailed account analysis
-                - **Top Account Balances** - Focus on highest impact accounts
-                """)
-
-            # Tools Section
-            with st.expander("🛠️ Credit Management Tools"):
-                st.markdown("""
-                - **Credit Score Simulation** - Preview impact of financial decisions
-                - **Debt Reduction Planning** - Strategic payoff planning
-                - **Credit Building Tips** - Personalized improvement recommendations
-                - **Alert System** - Stay informed of important changes
-                """)
-
-            # Trends and Forecasting Section
-            with st.expander("📊 Trends & Forecasting"):
-                st.markdown("""
-                - **Credit Score Trend** - Historical score tracking and projections
-                - **Monthly Spending Trend** - Analyze spending patterns over time
-                - **Credit Score vs. Credit Utilization** - Correlation analysis
-                - **Debt Repayment Schedule** - Strategic payoff timeline
+                - **Credit History Analysis** - Track account age and history impact
+                - **Payment Pattern Analytics** - Identify optimization opportunities
+                - **Account Performance Metrics** - Detailed account breakdowns
+                - **Predictive Modeling** - Forecast credit score changes
                 """)
 
             # Call to action
             st.markdown("---")
             st.success("""
-            🚀 **Ready to get started?** 
+            🚀 **Your Dashboard is Ready** 
             
-            Use the navigation menu above to explore your credit management tools and start optimizing your financial profile today!
+            Use the navigation menu above to access your personalized credit management tools 
+            and start optimizing your financial profile with confidence.
             """)
             
         else:
-            # Content for non-authenticated users
+            # Non-authenticated content
+            st.warning("🔐 **Secure Access Required**")
             st.write("""
-            Welcome to **VIP Credit Systems**, where managing your credit has never been easier. 
-            Our system provides comprehensive tools and insights to help you understand and optimize your credit profile.
-            
-            **Please log in using the sidebar to access your credit management dashboard.**
+            **VIP Credit Systems** is a secure, role-based credit management platform. 
+            Access is restricted to authorized personnel with proper credentials and permissions.
             """)
 
-            # Preview of features
-            st.markdown("## 🎯 System Features Preview")
+            # System overview for non-authenticated users
+            st.markdown("## 🔒 Secure Platform Overview")
             
-            col_feat1, col_feat2 = st.columns(2)
+            col_security, col_features = st.columns(2)
             
-            with col_feat1:
+            with col_security:
                 st.markdown("""
-                ### 📊 Credit Monitoring
-                - Real-time credit score tracking
-                - Credit utilization monitoring
-                - Payment history analysis
-                - Credit report summaries
-                """)
-                
-                st.markdown("""
-                ### 🔧 Account Management
-                - Credit inquiry tracking
-                - Credit limit optimization
-                - Debt-to-income calculations
-                - Balance management tools
+                ### 🛡️ Security Features
+                - Role-based access control
+                - Encrypted data transmission
+                - Secure authentication system
+                - Audit trail monitoring
                 """)
             
-            with col_feat2:
+            with col_features:
                 st.markdown("""
-                ### 📈 Analytics & Insights
-                - Account age analysis
-                - Payment pattern tracking
-                - Credit breakdown reports
-                - Balance prioritization
-                """)
-                
-                st.markdown("""
-                ### 🛠️ Management Tools
-                - Credit score simulation
-                - Debt reduction planning
-                - Improvement recommendations
-                - Custom alert system
+                ### 📊 Platform Capabilities
+                - Real-time credit monitoring
+                - Advanced analytics dashboard
+                - Comprehensive reporting
+                - Predictive insights
                 """)
 
             # Access requirements
             st.markdown("---")
-            st.warning("""
-            🔐 **Access Requirements** 
+            st.error("""
+            🚫 **Access Restricted** 
             
-            This system is restricted to **Subscriber** and **Administrator** accounts only.
+            This platform requires **Subscriber** or **Administrator** credentials.
+            Unauthorized access attempts are logged and monitored.
             
             [**Contact Support for Access**](https://vipbusinesscredit.com/)
             """)
