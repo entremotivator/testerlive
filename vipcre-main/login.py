@@ -40,7 +40,7 @@ def login_page(auth):
                     st.session_state['token'] = token
                     st.session_state['role'] = user_role
                     st.success(f"Logged in successfully as {user_role}!")
-                    st.experimental_rerun()
+                    st.rerun()
                 elif user_role == 'customer':
                     st.error("Access denied. Customers are not allowed.")
                 else:
@@ -57,7 +57,7 @@ def logout():
             del st.session_state['token']
             del st.session_state['role']
             st.success("Logged out successfully.")
-            st.experimental_rerun()
+            st.rerun()
 
 # ------------------------
 # App Logic
