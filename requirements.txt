@@ -8,3 +8,4 @@ uuid
 seaborn
 requests
 wordpress_auth
+supabase
