@@ -35,23 +35,19 @@ def handle_login(username, password, auth):
         if token and auth.verify_token(token):
             user_role = auth.get_user_role(token)
             
-            # ONLY allow subscriber and administrator roles
-            if user_role not in ['subscriber', 'administrator']:
+            # Check if user role is 'customer' - deny access
+            if user_role == 'customer':
                 st.sidebar.error("🚫 **Access Denied**")
-                st.sidebar.warning(f"""
-                **Insufficient Privileges**
+                st.sidebar.warning("""
+                **Account upgrade required**
                 
-                Your role: {user_role}
+                Your account needs VIP access to use this system.
                 
-                **Only these roles are allowed:**
-                - ✅ Subscriber
-                - ✅ Administrator
-                
-                [**Contact Support**](https://vipbusinesscredit.com/)
+                [**Join VIP Program**](https://vipbusinesscredit.com/)
                 """)
                 return False
             
-            # Allow access for subscriber and administrator only
+            # Allow access for all other roles
             st.session_state.authenticated = True
             st.session_state.user_role = user_role
             st.session_state.token = token
@@ -106,12 +102,11 @@ def sidebar_content():
                 st.markdown("""
                 **Allowed:**
                 - ✅ Administrator
-                - ✅ Subscriber
+                - ✅ Subscriber  
+                - ✅ Editor/Author
                 
-                **Not Allowed:**
+                **Requires Upgrade:**
                 - ❌ Customer
-                - ❌ Editor/Author
-                - ❌ All other roles
                 """)
                 
         else:
@@ -144,6 +139,8 @@ def main_content():
                 st.info("🛠️ **Administrator Access** - Full system privileges")
             elif st.session_state.user_role == 'subscriber':
                 st.info("📊 **Subscriber Access** - Credit dashboard enabled")
+            else:
+                st.info(f"✅ **{st.session_state.user_role.title()} Access** - Welcome!")
 
             # Introduction for authenticated users
             st.write("""
