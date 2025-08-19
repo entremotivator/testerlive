@@ -1,0 +1,10 @@
+streamlit
+pandas
+datetime
+numpy
+plotly
+matplotlib
+uuid
+seaborn
+requests
+wordpress_auth
