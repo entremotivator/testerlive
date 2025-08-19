@@ -73,16 +73,17 @@ def login(username, password):
             # Check user role(s)
             user_roles = user_data.get("roles", [])
 
-            if "subscriber" in user_roles:   # ❌ Block only subscriber role
-                st.error("🚫 Access denied. Subscriber accounts are not allowed.")
+            # ✅ Only allow admin + subscriber
+            if not any(role in ["administrator", "subscriber"] for role in user_roles):
+                st.error("🚫 Access denied. Only Administrators and Subscribers are allowed.")
                 st.session_state.authenticated = False
                 return
 
-            # Allow login for all other roles (including customer)
+            # Allow login for admin + subscriber
             st.session_state.authenticated = True
             st.session_state.token = token
             st.session_state.user_roles = user_roles
-            st.success("✅ Login successful!")
+            st.success(f"✅ Login successful! Roles: {', '.join(user_roles)}")
         else:
             st.error("❌ Invalid username or password")
     else:
