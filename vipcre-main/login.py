@@ -16,11 +16,63 @@ st.set_page_config(
 # ------------------------
 # Define user roles here - REQUIRED for access control
 USER_ROLES = {
-    # Add your users and their roles here - NO DEFAULT ROLES
-    # 'username': 'role'
-    # 'admin_user': 'administrator',
-    # 'subscriber_user': 'subscriber',
-    # 'customer_user': 'customer',  # This will be denied access
+    # Standard WordPress Roles
+    'admin': 'administrator',
+    'super_admin': 'super_admin',
+    'editor_user': 'editor',
+    'author_user': 'author',
+    'contributor_user': 'contributor',
+    'subscriber_user': 'subscriber',
+    
+    # WooCommerce Roles
+    'shop_manager': 'shop_manager',
+    'customer_user': 'customer',  # Will be denied access
+    
+    # Custom Business Roles
+    'business_owner': 'administrator',
+    'manager': 'editor',
+    'employee': 'subscriber',
+    'vip_member': 'subscriber',
+    'premium_user': 'subscriber',
+    
+    # Support and Service Roles  
+    'support_agent': 'contributor',
+    'moderator': 'editor',
+    'content_creator': 'author',
+    
+    # Membership Plugin Roles
+    'member': 'subscriber',
+    'premium_member': 'subscriber',
+    'gold_member': 'subscriber',
+    'platinum_member': 'administrator',
+    
+    # Learning Management System Roles
+    'instructor': 'editor',
+    'student': 'subscriber',
+    'course_admin': 'administrator',
+    
+    # Real Estate Roles
+    'agent': 'contributor',
+    'broker': 'editor',
+    'property_manager': 'subscriber',
+    
+    # E-commerce Extended Roles
+    'vendor': 'contributor',
+    'affiliate': 'subscriber',
+    'reseller': 'subscriber',
+    
+    # Organization Roles
+    'ceo': 'administrator',
+    'cto': 'administrator', 
+    'marketing_manager': 'editor',
+    'sales_rep': 'contributor',
+    'accountant': 'subscriber',
+    
+    # Example users - Replace with your actual usernames
+    'john_admin': 'administrator',
+    'jane_editor': 'editor',
+    'mike_subscriber': 'subscriber',
+    'sarah_customer': 'customer',  # Will be denied access
 }
 
 def get_user_role_from_config(username):
@@ -63,7 +115,76 @@ def check_user_role_access(role):
     """Check if user role has access to the system"""
     if not role:
         return False
-    allowed_roles = ['subscriber', 'administrator']
+    
+    # Define allowed roles for system access
+    allowed_roles = [
+        # WordPress Standard Roles (allowed)
+        'administrator',
+        'super_admin', 
+        'editor',
+        'author',
+        'contributor',
+        'subscriber',
+        
+        # WooCommerce Roles (selective)
+        'shop_manager',  # Allowed - business management
+        # 'customer' - DENIED ACCESS
+        
+        # Custom Business Roles (allowed)
+        'business_owner',
+        'manager',
+        'employee',
+        'vip_member',
+        'premium_user',
+        
+        # Support Roles (allowed)
+        'support_agent',
+        'moderator',
+        'content_creator',
+        
+        # Membership Roles (allowed)
+        'member',
+        'premium_member',
+        'gold_member',
+        'platinum_member',
+        
+        # LMS Roles (allowed)
+        'instructor',
+        'student',
+        'course_admin',
+        
+        # Real Estate Roles (allowed)
+        'agent',
+        'broker',
+        'property_manager',
+        
+        # E-commerce Extended Roles (allowed)
+        'vendor',
+        'affiliate',
+        'reseller',
+        
+        # Organization Roles (allowed)
+        'ceo',
+        'cto',
+        'marketing_manager',
+        'sales_rep',
+        'accountant'
+    ]
+    
+    # Explicitly denied roles
+    denied_roles = [
+        'customer',  # Primary denied role
+        'guest',
+        'pending',
+        'blocked',
+        'suspended'
+    ]
+    
+    # Check if role is explicitly denied
+    if role in denied_roles:
+        return False
+        
+    # Check if role is in allowed list
     return role in allowed_roles
 
 # ------------------------
@@ -89,16 +210,34 @@ def get_user_input():
         
         st.markdown("---")
         st.markdown("**🛡️ Access Control:**")
-        st.success("✅ Administrators - Full Access")
-        st.info("👤 Subscribers - Limited Access")
+        st.success("✅ Administrators, Super Admins - Full Access")
+        st.info("✏️ Editors, Managers, Shop Managers - Content Management")
+        st.warning("📝 Authors, Contributors, Instructors - Content Creation")
+        st.info("👤 Subscribers, Members, Students - Content Access")
         st.error("❌ Customers - Access Denied")
-        st.warning("⚠️ Users without assigned roles - Access Denied")
+        st.error("⛔ Guests, Pending, Blocked - Access Denied")
         
         # Configuration info
         st.markdown("---")
         st.markdown("**⚙️ Role Configuration:**")
         if USER_ROLES:
             st.info(f"📋 {len(USER_ROLES)} users configured in USER_ROLES")
+            
+            # Show role distribution
+            role_counts = {}
+            for username, role in USER_ROLES.items():
+                role_counts[role] = role_counts.get(role, 0) + 1
+            
+            st.markdown("**Role Distribution:**")
+            for role, count in sorted(role_counts.items()):
+                if role == 'customer':
+                    st.error(f"❌ {role}: {count} users")
+                elif role in ['administrator', 'super_admin']:
+                    st.success(f"🔐 {role}: {count} users")
+                elif role in ['editor', 'manager', 'shop_manager']:
+                    st.info(f"✏️ {role}: {count} users") 
+                else:
+                    st.text(f"👤 {role}: {count} users")
         else:
             st.warning("🔧 No users configured in USER_ROLES - configure roles in code")
         
@@ -116,7 +255,8 @@ def main_page(user_role, username=None):
     
     col1, col2, col3 = st.columns(3)
     
-    if user_role == 'administrator':
+    # Administrator and Super Admin roles
+    if user_role in ['administrator', 'super_admin', 'business_owner', 'ceo', 'cto', 'course_admin', 'platinum_member']:
         with col1:
             st.metric("Access Level", "Full Admin", "100%")
         with col2:
@@ -139,6 +279,7 @@ def main_page(user_role, username=None):
             - User activity reports
             - Performance analytics
             - Error tracking
+            - Revenue and sales reports
             """)
             
         with tab2:
@@ -149,6 +290,7 @@ def main_page(user_role, username=None):
             - Assign user roles
             - Monitor user activity
             - Manage access permissions
+            - Bulk user operations
             """)
             
         with tab3:
@@ -159,6 +301,7 @@ def main_page(user_role, username=None):
             - Security settings
             - Integration management
             - Backup and restore
+            - Payment gateway settings
             """)
             
         with tab4:
@@ -169,51 +312,151 @@ def main_page(user_role, username=None):
             - WordPress integration settings
             - API key management
             - System maintenance
+            - Database management
             """)
-            
-    elif user_role == 'subscriber':
+    
+    # Editor and Manager roles
+    elif user_role in ['editor', 'manager', 'shop_manager', 'moderator', 'broker', 'marketing_manager']:
         with col1:
-            st.metric("Access Level", "Subscriber", "60%")
+            st.metric("Access Level", "Editor/Manager", "80%")
         with col2:
-            st.metric("Permissions", "Limited", "⚠️")
+            st.metric("Permissions", "Content & Users", "✅")
         with col3:
             st.metric("Status", "Active", "🟢")
             
         st.markdown("---")
-        st.info("📖 **Subscriber Access Granted**")
-        st.write("You have access to subscriber-only content:")
+        st.info("✏️ **Editor/Manager Access Granted**")
+        st.write("You have access to content management and user oversight:")
+        
+        tab1, tab2, tab3 = st.tabs(["Content Management", "User Oversight", "Reports"])
+        
+        with tab1:
+            st.write("📝 **Content Management**")
+            st.success("Create, edit, and publish content")
+            st.markdown("""
+            - Create and edit all content
+            - Publish and manage posts
+            - Media library access
+            - SEO optimization tools
+            """)
+            
+        with tab2:
+            st.write("👥 **User Oversight**")
+            st.success("Limited user management capabilities")
+            st.markdown("""
+            - View user profiles
+            - Monitor user activity
+            - Moderate user content
+            - Basic user support
+            """)
+            
+        with tab3:
+            st.write("📊 **Reports & Analytics**")
+            st.success("Access to performance reports")
+            st.markdown("""
+            - Content performance metrics
+            - User engagement reports
+            - Traffic analytics
+            - Conversion tracking
+            """)
+    
+    # Author and Contributor roles
+    elif user_role in ['author', 'contributor', 'content_creator', 'instructor', 'agent', 'vendor', 'sales_rep', 'support_agent']:
+        with col1:
+            st.metric("Access Level", "Content Creator", "60%")
+        with col2:
+            st.metric("Permissions", "Create Content", "⚠️")
+        with col3:
+            st.metric("Status", "Active", "🟢")
+            
+        st.markdown("---")
+        st.warning("📝 **Content Creator Access**")
+        st.write("You can create and manage your own content:")
+        
+        tab1, tab2 = st.tabs(["My Content", "Tools"])
+        
+        with tab1:
+            st.write("📄 **My Content**")
+            st.success("Create and edit your own content")
+            st.markdown("""
+            - Write and edit your posts
+            - Upload media files
+            - Schedule publications
+            - Track content performance
+            """)
+            
+        with tab2:
+            st.write("🛠️ **Available Tools**")
+            st.success("Content creation and management tools")
+            st.markdown("""
+            - Rich text editor
+            - Image editing tools
+            - SEO suggestions
+            - Publishing calendar
+            """)
+    
+    # Subscriber and Member roles
+    else:  # All other allowed roles
+        role_display = {
+            'subscriber': 'Subscriber',
+            'employee': 'Employee', 
+            'vip_member': 'VIP Member',
+            'premium_user': 'Premium User',
+            'member': 'Member',
+            'premium_member': 'Premium Member',
+            'gold_member': 'Gold Member',
+            'student': 'Student',
+            'property_manager': 'Property Manager',
+            'affiliate': 'Affiliate',
+            'reseller': 'Reseller',
+            'accountant': 'Accountant'
+        }.get(user_role, user_role.replace('_', ' ').title())
+        
+        with col1:
+            st.metric("Access Level", role_display, "40%")
+        with col2:
+            st.metric("Permissions", "View Content", "ℹ️")
+        with col3:
+            st.metric("Status", "Active", "🟢")
+            
+        st.markdown("---")
+        st.info(f"📖 **{role_display} Access Granted**")
+        st.write("You have access to subscriber content and features:")
         
         # Subscriber-specific features
         tab1, tab2, tab3 = st.tabs(["Content", "Profile", "Support"])
         
         with tab1:
-            st.write("📚 **Subscriber Content**")
-            st.success("Access to premium articles and resources")
+            st.write("📚 **Available Content**")
+            st.success("Access to your content library")
             st.markdown("""
             - Premium content library
-            - Exclusive tutorials
+            - Exclusive tutorials and guides
             - Member-only resources
-            - Download materials
+            - Downloadable materials
+            - Video content library
             """)
             
         with tab2:
-            st.write("👤 **Profile Settings**")
-            st.success("Manage your subscription and preferences")
+            st.write("👤 **Profile Management**")
+            st.success("Manage your account and preferences")
             st.markdown("""
             - Update profile information
             - Manage notification preferences
-            - View subscription status
-            - Account settings
+            - View subscription/membership status
+            - Account settings and security
+            - Activity history
             """)
             
         with tab3:
-            st.write("🎧 **Support**")
-            st.success("Access to subscriber support")
+            st.write("🎧 **Support & Community**")
+            st.success("Get help and connect with others")
             st.markdown("""
             - Submit support tickets
             - Access knowledge base
-            - Community forums
-            - FAQ section
+            - Community forums access
+            - FAQ and help documentation
+            - Live chat support
             """)
 
 # ------------------------
@@ -452,4 +695,4 @@ def main():
 # Run Application
 # ------------------------
 if __name__ == "__main__":
-    main(
+    main()
