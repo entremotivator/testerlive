@@ -39,11 +39,63 @@ def check_user_role_access(role):
 
 # Define user roles here - REQUIRED for access control
 USER_ROLES = {
-    # Add your users and their roles here - NO DEFAULT ROLES
-    # 'username': 'role'
-    # 'admin_user': 'administrator',
-    # 'subscriber_user': 'subscriber',
-    # 'customer_user': 'customer',  # This will be denied access
+    # Standard WordPress Roles
+    'admin': 'administrator',
+    'super_admin': 'super_admin',
+    'editor_user': 'editor',
+    'author_user': 'author',
+    'contributor_user': 'contributor',
+    'subscriber_user': 'subscriber',
+    
+    # WooCommerce Roles
+    'shop_manager': 'shop_manager',
+    'customer_user': 'customer',  # Will be denied access
+    
+    # Custom Business Roles
+    'business_owner': 'administrator',
+    'manager': 'editor',
+    'employee': 'subscriber',
+    'vip_member': 'subscriber',
+    'premium_user': 'subscriber',
+    
+    # Support and Service Roles  
+    'support_agent': 'contributor',
+    'moderator': 'editor',
+    'content_creator': 'author',
+    
+    # Membership Plugin Roles
+    'member': 'subscriber',
+    'premium_member': 'subscriber',
+    'gold_member': 'subscriber',
+    'platinum_member': 'administrator',
+    
+    # Learning Management System Roles
+    'instructor': 'editor',
+    'student': 'subscriber',
+    'course_admin': 'administrator',
+    
+    # Real Estate Roles
+    'agent': 'contributor',
+    'broker': 'editor',
+    'property_manager': 'subscriber',
+    
+    # E-commerce Extended Roles
+    'vendor': 'contributor',
+    'affiliate': 'subscriber',
+    'reseller': 'subscriber',
+    
+    # Organization Roles
+    'ceo': 'administrator',
+    'cto': 'administrator', 
+    'marketing_manager': 'editor',
+    'sales_rep': 'contributor',
+    'accountant': 'subscriber',
+    
+    # Example users - Replace with your actual usernames
+    'john_admin': 'administrator',
+    'jane_editor': 'editor',
+    'mike_subscriber': 'subscriber',
+    'sarah_customer': 'customer',  # Will be denied access
 }
 
 def get_user_role_from_config(username):
