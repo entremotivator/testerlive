@@ -9,5 +9,4 @@ seaborn
 requests
 wordpress_auth
 supabase
-hashlib-compat
 datetime
