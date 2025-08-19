@@ -33,109 +33,8 @@ def check_user_role_access(role):
     allowed_roles = ['subscriber', 'administrator']
     return role in allowed_roles
 
-# ------------------------
-# Configuration and User Role Management
-# ------------------------
-
-# Define user roles here - REQUIRED for access control
-USER_ROLES = {
-    # Standard WordPress Roles
-    'admin': 'administrator',
-    'super_admin': 'super_admin',
-    'editor_user': 'editor',
-    'author_user': 'author',
-    'contributor_user': 'contributor',
-    'subscriber_user': 'subscriber',
-    
-    # WooCommerce Roles
-    'shop_manager': 'shop_manager',
-    'customer_user': 'customer',  # Will be denied access
-    
-    # Custom Business Roles
-    'business_owner': 'administrator',
-    'manager': 'editor',
-    'employee': 'subscriber',
-    'vip_member': 'subscriber',
-    'premium_user': 'subscriber',
-    
-    # Support and Service Roles  
-    'support_agent': 'contributor',
-    'moderator': 'editor',
-    'content_creator': 'author',
-    
-    # Membership Plugin Roles
-    'member': 'subscriber',
-    'premium_member': 'subscriber',
-    'gold_member': 'subscriber',
-    'platinum_member': 'administrator',
-    
-    # Learning Management System Roles
-    'instructor': 'editor',
-    'student': 'subscriber',
-    'course_admin': 'administrator',
-    
-    # Real Estate Roles
-    'agent': 'contributor',
-    'broker': 'editor',
-    'property_manager': 'subscriber',
-    
-    # E-commerce Extended Roles
-    'vendor': 'contributor',
-    'affiliate': 'subscriber',
-    'reseller': 'subscriber',
-    
-    # Organization Roles
-    'ceo': 'administrator',
-    'cto': 'administrator', 
-    'marketing_manager': 'editor',
-    'sales_rep': 'contributor',
-    'accountant': 'subscriber',
-    
-    # Example users - Replace with your actual usernames
-    'john_admin': 'administrator',
-    'jane_editor': 'editor',
-    'mike_subscriber': 'subscriber',
-    'sarah_customer': 'customer',  # Will be denied access
-}
-
-def get_user_role_from_config(username):
-    """Get user role from configuration - NO DEFAULT ROLE."""
-    return USER_ROLES.get(username.lower(), None)
-
-def get_user_role_from_auth(auth, token, username):
-    """Get user role from WordPress auth with NO default fallback."""
-    try:
-        user_role = None
-        
-        # Try the get_user_role method if it exists
-        if hasattr(auth, 'get_user_role'):
-            user_role = auth.get_user_role(token)
-        
-        # Fallback: Try get_user_info method if available
-        elif hasattr(auth, 'get_user_info'):
-            user_info = auth.get_user_info(token)
-            if isinstance(user_info, dict) and 'role' in user_info:
-                user_role = user_info.get('role')
-        
-        # Fallback: Try user_data method if available
-        elif hasattr(auth, 'user_data'):
-            user_data = auth.user_data(token)
-            if isinstance(user_data, dict) and 'role' in user_data:
-                user_role = user_data.get('role')
-        
-        # If WordPress auth didn't provide role, check configuration
-        if not user_role:
-            user_role = get_user_role_from_config(username)
-        
-        # Return role only if explicitly found, otherwise None
-        return user_role if user_role else None
-            
-    except Exception as e:
-        st.error(f"🔥 Error determining user role: {str(e)}")
-        return None
-
 def handle_login(username, password, auth):
-    """Handle user login process with strict role-based access control."""
+    """Handle user login process with role-based access control."""
     if not username or not password:
         st.error("❌ Please enter both username and password")
         return False
@@ -145,17 +44,10 @@ def handle_login(username, password, auth):
             token = auth.get_token(username, password)
             
             if token and auth.verify_token(token):
-                user_role = get_user_role_from_auth(auth, token, username)
-                
-                # Strict role checking - NO access without explicit role
-                if not user_role:
-                    st.error("🚫 **Access Denied**: No role assigned to this user.")
-                    st.warning("Please contact an administrator to assign a role to your account.")
-                    st.info("📝 **Note**: Add user roles in the USER_ROLES configuration if WordPress doesn't provide role information.")
-                    return False
+                user_role = auth.get_user_role(token)
                 
                 # Check if user role is allowed
-                elif check_user_role_access(user_role):
+                if check_user_role_access(user_role):
                     # Store authentication data
                     st.session_state.authenticated = True
                     st.session_state.token = token
@@ -220,15 +112,6 @@ def render_login_sidebar():
         st.success("✅ Administrators - Full Access")
         st.info("👤 Subscribers - System Access") 
         st.error("❌ Customers - Access Denied")
-        st.warning("⚠️ Users without assigned roles - Access Denied")
-        
-        # Configuration info
-        st.markdown("---")
-        st.markdown("**⚙️ Role Configuration:**")
-        if USER_ROLES:
-            st.info(f"📋 {len(USER_ROLES)} users configured in USER_ROLES")
-        else:
-            st.warning("🔧 No users configured in USER_ROLES - configure roles in code")
         
         # Sign-up link
         st.markdown("---")
@@ -431,19 +314,9 @@ def render_unauthenticated_content():
         
         # Access information
         st.warning("""
-        **Important Access Requirements:**
-        - This system is available to subscribers and administrators only
-        - Customers do not have access to this platform
-        - Users must have an explicitly assigned role (no default roles)
-        - Contact an administrator if you need role assignment
+        **Important:** This system is available to subscribers and administrators only. 
+        Customers do not have access to this platform.
         """)
-        
-        # Role configuration note
-        if not USER_ROLES:
-            st.info("""
-            **For Developers:** Configure user roles in the USER_ROLES dictionary 
-            in the code if WordPress doesn't provide role information automatically.
-            """)
 
 # ------------------------
 # Main Application
@@ -458,17 +331,13 @@ def main():
         try:
             if not st.session_state.auth.verify_token(st.session_state.token):
                 # Token is invalid, reset authentication
-                for key in ['authenticated', 'token', 'user_role', 'username']:
-                    if key in st.session_state:
-                        del st.session_state[key]
+                st.session_state.authenticated = False
                 st.warning("🔄 Session expired. Please log in again.")
                 st.rerun()
-        except Exception as e:
+        except:
             # Error verifying token, reset authentication
-            for key in ['authenticated', 'token', 'user_role', 'username']:
-                if key in st.session_state:
-                    del st.session_state[key]
-            st.error(f"❌ Authentication error: {str(e)}. Please log in again.")
+            st.session_state.authenticated = False
+            st.error("❌ Authentication error. Please log in again.")
             st.rerun()
     
     # Render appropriate content based on authentication status
