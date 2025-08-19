@@ -20,6 +20,9 @@ if 'user_role' not in st.session_state:
 if 'token' not in st.session_state:
     st.session_state.token = None
 
+# Define allowed roles - ONLY subscriber and administrator
+ALLOWED_ROLES = ['subscriber', 'administrator']
+
 # ------------------------
 # Initialize WordPress authentication
 # ------------------------
@@ -33,11 +36,17 @@ def initialize_auth():
         st.error(f"Missing secret configuration: {e}")
         st.stop()
 
+def is_role_allowed(user_role):
+    """Check if user role is in the allowed list."""
+    if not user_role:
+        return False
+    return user_role.lower() in ALLOWED_ROLES
+
 # ------------------------
-# Handle login
+# Handle login with strict role checking
 # ------------------------
 def handle_login(username, password, auth):
-    """Authenticate user and verify role."""
+    """Authenticate user and verify role - ONLY allow subscriber and administrator."""
     try:
         token = auth.get_token(username, password)
         if not token:
@@ -55,25 +64,25 @@ def handle_login(username, password, auth):
 
         user_role = user_role.lower()
 
-        # Deny access for 'customer'
-        if user_role == 'customer':
-            st.error("🚫 **Access Denied**")
-            st.warning("""
-            ### Your account needs to be upgraded to access VIP Credit Systems.
+        # Strict role checking - ONLY allow subscriber and administrator
+        if not is_role_allowed(user_role):
+            st.error("🚫 **Access Denied - Insufficient Privileges**")
+            st.warning(f"""
+            ### Your account role: **{user_role.title()}**
             
-            **Options to get access:**
-            - 🌟 [**Join our VIP Program**](https://vipbusinesscredit.com/)
-            - 💳 [**Update your payment information**](https://vipbusinesscredit.com/)
+            **This system is restricted to:**
+            - ✅ **Subscriber** accounts
+            - ✅ **Administrator** accounts
             
-            **VIP benefits:**
-            - Complete credit monitoring
-            - Advanced credit building tools
-            - Expert guidance & personalized support
-            - Business credit optimization strategies
+            **Your role "{user_role}" is not authorized for access.**
+            
+            **To gain access:**
+            - 📞 [**Contact Support**](https://vipbusinesscredit.com/)
+            - 🔄 Request role upgrade from your administrator
             """)
             return False
 
-        # Allow access for other roles
+        # Allow access for subscriber and administrator only
         st.session_state.authenticated = True
         st.session_state.user_role = user_role
         st.session_state.token = token
@@ -91,7 +100,7 @@ def handle_login(username, password, auth):
 # Login page UI
 # ------------------------
 def login_page():
-    """Display login interface."""
+    """Display login interface with strict access control."""
     if st.session_state.authenticated:
         st.success(f"✅ Already logged in as {st.session_state.user_role.title()}")
         st.info("🏠 [Go to Home Page](Home)")
@@ -105,8 +114,17 @@ def login_page():
         except:
             st.title("💳 VIP Credit Systems")
 
-        st.markdown("### 🔐 Login to Your Account")
-        st.markdown("Access your comprehensive credit management dashboard")
+        st.markdown("### 🔐 Secure Login")
+        st.markdown("Access restricted to authorized personnel only")
+
+        # Access requirements notice
+        st.info("""
+        🔒 **Access Requirements:**
+        - ✅ **Subscriber** accounts
+        - ✅ **Administrator** accounts
+        - ❌ **Customer** accounts (not authorized)
+        - ❌ **Other roles** (not authorized)
+        """)
 
         # Login form
         with st.form("login_form", clear_on_submit=False):
@@ -121,7 +139,7 @@ def login_page():
                 clear_button = st.form_submit_button("🗑️ Clear")
 
             if login_button and username and password:
-                with st.spinner("🔄 Authenticating..."):
+                with st.spinner("🔄 Authenticating and verifying permissions..."):
                     auth = initialize_auth()
                     handle_login(username, password, auth)
 
@@ -129,39 +147,42 @@ def login_page():
                 st.rerun()
 
         st.markdown("---")
-        st.markdown("### 🌟 New to VIP Credit Systems?")
+        st.markdown("### 🔐 Access Control Information")
 
-        col_join, col_info = st.columns([1, 1])
-        with col_join:
+        col_access, col_contact = st.columns([1, 1])
+        with col_access:
             st.markdown("""
-            **Ready to take control of your credit?**
-            [**🚀 Join VIP Business Credit →**](https://vipbusinesscredit.com/)
+            **Authorized Roles:**
+            - 🛠️ **Administrator** - Full system access
+            - 📊 **Subscriber** - Dashboard access
             """)
-        with col_info:
+        with col_contact:
             st.markdown("""
-            **What's included:**
-            - ✅ Complete credit monitoring
-            - ✅ Business credit building tools  
-            - ✅ Expert guidance & support
-            - ✅ Personalized strategies
+            **Need Access?**
+            - 📞 [**Contact Support**](https://vipbusinesscredit.com/)
+            - 🔄 Request role upgrade
             """)
 
         st.markdown("---")
-        with st.expander("❓ Need Help?"):
+        with st.expander("❓ Access & Security Information"):
             st.markdown("""
-            **Having trouble logging in?**
-            - Use your WordPress credentials
-            - Ensure your account is active with proper permissions
-            - Contact support if issues persist
+            **Security Notice:**
+            This system implements strict role-based access control. Only users with **Subscriber** or **Administrator** roles are permitted to access the VIP Credit Systems dashboard.
 
-            **Account Access Levels:**
-            - ✅ **Administrator** - Full system access
-            - ✅ **Subscriber** - Credit dashboard access  
-            - ✅ **Editor/Author** - Standard access
-            - ❌ **Customer** - Requires VIP upgrade
+            **If you're having access issues:**
+            1. Verify your WordPress account is active
+            2. Confirm your role assignment with your administrator
+            3. Contact support if you believe you should have access
+
+            **Role Definitions:**
+            - **Administrator**: Full system privileges and management capabilities
+            - **Subscriber**: Access to credit monitoring and dashboard features
+            - **Customer**: Standard website access only (no dashboard access)
+            - **Other roles**: Contact administrator for access evaluation
             """)
 
 # ------------------------
 # Run the page
 # ------------------------
 login_page()
+
