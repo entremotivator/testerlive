@@ -11,19 +11,10 @@ st.set_page_config(
 # Initialize authentication state
 if 'authenticated' not in st.session_state:
     st.session_state.authenticated = False
-if 'user_info' not in st.session_state:
-    st.session_state.user_info = None
+if 'user_role' not in st.session_state:
+    st.session_state.user_role = None
 if 'token' not in st.session_state:
     st.session_state.token = None
-
-# Alternative approach: Define authorized usernames or use token-based validation
-# You can replace this with actual usernames of subscribers and administrators
-AUTHORIZED_USERS = {
-    # Add actual usernames here - example:
-    # 'admin_user': 'administrator',
-    # 'subscriber1': 'subscriber',
-    # 'subscriber2': 'subscriber'
-}
 
 def initialize_auth():
     """Initialize the WordPressAuth instance with secrets."""
@@ -35,98 +26,36 @@ def initialize_auth():
         st.error(f"Missing secret configuration: {e}")
         st.stop()
 
-def get_user_info_safe(auth, token):
-    """Safely get user information with available methods."""
-    try:
-        user_info = {}
-        
-        # Try to get username
-        if hasattr(auth, 'get_username'):
-            user_info['username'] = auth.get_username(token)
-        elif hasattr(auth, 'get_user'):
-            user_data = auth.get_user(token)
-            if isinstance(user_data, dict):
-                user_info.update(user_data)
-            else:
-                user_info['username'] = str(user_data)
-        
-        # Try to get user ID
-        if hasattr(auth, 'get_user_id'):
-            user_info['user_id'] = auth.get_user_id(token)
-            
-        # Try to get any user role if method exists
-        if hasattr(auth, 'get_user_role'):
-            user_info['role'] = auth.get_user_role(token)
-        elif hasattr(auth, 'get_role'):
-            user_info['role'] = auth.get_role(token)
-            
-        return user_info if user_info else None
-        
-    except Exception as e:
-        st.sidebar.error(f"Error getting user info: {str(e)}")
-        return None
-
-def is_user_authorized(user_info):
-    """Check if user is authorized based on available information."""
-    if not user_info:
-        return False, "No user information available"
-    
-    # Method 1: Check against authorized usernames list
-    username = user_info.get('username', '').lower()
-    if username in [u.lower() for u in AUTHORIZED_USERS.keys()]:
-        return True, f"Authorized user: {username}"
-    
-    # Method 2: Check role if available
-    role = user_info.get('role', '').lower()
-    if role in ['subscriber', 'administrator']:
-        return True, f"Authorized role: {role}"
-    
-    # Method 3: If no specific restrictions and user has valid token, allow access
-    # (You can modify this logic based on your security requirements)
-    if username and not role:
-        # For now, we'll be restrictive and deny access if we can't determine role
-        return False, f"Cannot verify authorization for user: {username}"
-    
-    return False, f"User not authorized - Username: {username}, Role: {role}"
-
 def handle_login(username, password, auth):
-    """Handle user login with flexible authorization checking."""
+    """Handle user login and role verification."""
     try:
         # Get authentication token
         token = auth.get_token(username, password)
         
         if token and auth.verify_token(token):
-            # Get user information
-            user_info = get_user_info_safe(auth, token)
+            user_role = auth.get_user_role(token)
             
-            # Check authorization
-            is_authorized, auth_message = is_user_authorized(user_info)
-            
-            if not is_authorized:
+            # ONLY allow subscriber and administrator roles
+            if user_role not in ['subscriber', 'administrator']:
                 st.sidebar.error("🚫 **Access Denied**")
                 st.sidebar.warning(f"""
-                **Authorization Failed**
+                **Insufficient Privileges**
                 
-                {auth_message}
+                Your role: {user_role}
                 
-                **This system is restricted to:**
-                - ✅ Subscriber accounts
-                - ✅ Administrator accounts
+                **Only these roles are allowed:**
+                - ✅ Subscriber
+                - ✅ Administrator
                 
-                **To gain access:**
                 [**Contact Support**](https://vipbusinesscredit.com/)
                 """)
                 return False
             
-            # Allow access
+            # Allow access for subscriber and administrator only
             st.session_state.authenticated = True
-            st.session_state.user_info = user_info
+            st.session_state.user_role = user_role
             st.session_state.token = token
-            
-            display_name = user_info.get('username', 'User')
-            role = user_info.get('role', 'Authorized User')
-            st.sidebar.success(f"✅ Welcome, {display_name}!")
-            st.sidebar.info(f"Status: {role.title()}")
+            st.sidebar.success(f"✅ Welcome, {user_role.title()}!")
             st.rerun()
             return True
             
@@ -141,7 +70,7 @@ def handle_login(username, password, auth):
 def logout():
     """Handle user logout."""
     st.session_state.authenticated = False
-    st.session_state.user_info = None
+    st.session_state.user_role = None
     st.session_state.token = None
     st.rerun()
 
@@ -167,30 +96,27 @@ def sidebar_content():
                     auth = initialize_auth()
                     handle_login(username, password, auth)
             
-            # Access information
+            # Sign up section
             st.markdown("---")
-            st.markdown("**Access Requirements**")
-            st.info("""
-            **Authorized Access:**
-            - ✅ Subscriber accounts
-            - ✅ Administrator accounts
-            - ✅ Authorized users
+            st.markdown("**New User?**")
+            st.markdown("[🌟 Join VIP Program](https://vipbusinesscredit.com/)")
             
-            **Restricted:**
-            - ❌ Customer accounts
-            - ❌ Unauthorized users
-            """)
-            
-            st.markdown("[🌟 Get Access](https://vipbusinesscredit.com/)")
+            # Help section
+            with st.expander("❓ Access Levels"):
+                st.markdown("""
+                **Allowed:**
+                - ✅ Administrator
+                - ✅ Subscriber
+                
+                **Not Allowed:**
+                - ❌ Customer
+                - ❌ Editor/Author
+                - ❌ All other roles
+                """)
                 
         else:
             # User info and logout
-            user_info = st.session_state.user_info or {}
-            display_name = user_info.get('username', 'User')
-            role = user_info.get('role', 'Authorized')
-            
-            st.success(f"👤 {display_name}")
-            st.caption(f"🔑 {role.title()}")
+            st.success(f"👤 {st.session_state.user_role.title()}")
             
             if st.button("🚪 Logout", use_container_width=True):
                 logout()
@@ -214,20 +140,14 @@ def main_content():
 
         if st.session_state.authenticated:
             # Welcome message for authenticated users
-            user_info = st.session_state.user_info or {}
-            display_name = user_info.get('username', 'User')
-            role = user_info.get('role', 'authorized user')
-            
-            if role.lower() == 'administrator':
+            if st.session_state.user_role == 'administrator':
                 st.info("🛠️ **Administrator Access** - Full system privileges")
-            elif role.lower() == 'subscriber':
+            elif st.session_state.user_role == 'subscriber':
                 st.info("📊 **Subscriber Access** - Credit dashboard enabled")
-            else:
-                st.info(f"✅ **Authorized Access** - Welcome {display_name}!")
 
             # Introduction for authenticated users
-            st.write(f"""
-            Welcome to **VIP Credit Systems**, {display_name}! Your comprehensive credit management dashboard is ready. 
+            st.write("""
+            Welcome to **VIP Credit Systems**! Your comprehensive credit management dashboard is ready. 
             Use the navigation menu above to access all features and start optimizing your credit profile.
             """)
 
@@ -270,6 +190,15 @@ def main_content():
                 - **Alert System** - Stay informed of important changes
                 """)
 
+            # Trends and Forecasting Section
+            with st.expander("📊 Trends & Forecasting"):
+                st.markdown("""
+                - **Credit Score Trend** - Historical score tracking and projections
+                - **Monthly Spending Trend** - Analyze spending patterns over time
+                - **Credit Score vs. Credit Utilization** - Correlation analysis
+                - **Debt Repayment Schedule** - Strategic payoff timeline
+                """)
+
             # Call to action
             st.markdown("---")
             st.success("""
@@ -287,17 +216,53 @@ def main_content():
             **Please log in using the sidebar to access your credit management dashboard.**
             """)
 
-            # Access requirements
+            # Preview of features
+            st.markdown("## 🎯 System Features Preview")
+            
+            col_feat1, col_feat2 = st.columns(2)
+            
+            with col_feat1:
+                st.markdown("""
+                ### 📊 Credit Monitoring
+                - Real-time credit score tracking
+                - Credit utilization monitoring
+                - Payment history analysis
+                - Credit report summaries
+                """)
+                
+                st.markdown("""
+                ### 🔧 Account Management
+                - Credit inquiry tracking
+                - Credit limit optimization
+                - Debt-to-income calculations
+                - Balance management tools
+                """)
+            
+            with col_feat2:
+                st.markdown("""
+                ### 📈 Analytics & Insights
+                - Account age analysis
+                - Payment pattern tracking
+                - Credit breakdown reports
+                - Balance prioritization
+                """)
+                
+                st.markdown("""
+                ### 🛠️ Management Tools
+                - Credit score simulation
+                - Debt reduction planning
+                - Improvement recommendations
+                - Custom alert system
+                """)
+
+            # Sign up call to action
             st.markdown("---")
-            st.warning("""
-            🔐 **Access Requirements** 
+            st.info("""
+            🌟 **New to VIP Credit Systems?** 
             
-            This system is restricted to authorized accounts only.
-            
-            [**Contact Support for Access**](https://vipbusinesscredit.com/)
+            [**Join our VIP Business Credit Program**](https://vipbusinesscredit.com/) to get full access to all credit management tools and expert guidance!
             """)
 
 # Main application logic
 sidebar_content()
 main_content()
-
