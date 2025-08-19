@@ -33,6 +33,34 @@ def check_user_role_access(role):
     allowed_roles = ['subscriber', 'administrator']
     return role in allowed_roles
 
+def get_user_role_from_auth(auth, token, username):
+    """Get user role from WordPress auth, with fallback methods."""
+    try:
+        # Try the get_user_role method if it exists
+        if hasattr(auth, 'get_user_role'):
+            return auth.get_user_role(token)
+        
+        # Fallback: Try get_user_info method if available
+        elif hasattr(auth, 'get_user_info'):
+            user_info = auth.get_user_info(token)
+            if isinstance(user_info, dict):
+                return user_info.get('role', 'subscriber')  # Default to subscriber
+        
+        # Fallback: Try user_data method if available
+        elif hasattr(auth, 'user_data'):
+            user_data = auth.user_data(token)
+            if isinstance(user_data, dict):
+                return user_data.get('role', 'subscriber')
+        
+        # Final fallback: Default to subscriber for valid tokens
+        else:
+            st.warning("⚠️ Could not determine user role. Defaulting to 'subscriber'.")
+            return 'subscriber'
+            
+    except Exception as e:
+        st.warning(f"⚠️ Error getting user role: {str(e)}. Defaulting to 'subscriber'.")
+        return 'subscriber'
+
 def handle_login(username, password, auth):
     """Handle user login process with role-based access control."""
     if not username or not password:
@@ -44,7 +72,7 @@ def handle_login(username, password, auth):
             token = auth.get_token(username, password)
             
             if token and auth.verify_token(token):
-                user_role = auth.get_user_role(token)
+                user_role = get_user_role_from_auth(auth, token, username)
                 
                 # Check if user role is allowed
                 if check_user_role_access(user_role):
@@ -331,13 +359,17 @@ def main():
         try:
             if not st.session_state.auth.verify_token(st.session_state.token):
                 # Token is invalid, reset authentication
-                st.session_state.authenticated = False
+                for key in ['authenticated', 'token', 'user_role', 'username']:
+                    if key in st.session_state:
+                        del st.session_state[key]
                 st.warning("🔄 Session expired. Please log in again.")
                 st.rerun()
-        except:
+        except Exception as e:
             # Error verifying token, reset authentication
-            st.session_state.authenticated = False
-            st.error("❌ Authentication error. Please log in again.")
+            for key in ['authenticated', 'token', 'user_role', 'username']:
+                if key in st.session_state:
+                    del st.session_state[key]
+            st.error(f"❌ Authentication error: {str(e)}. Please log in again.")
             st.rerun()
     
     # Render appropriate content based on authentication status
