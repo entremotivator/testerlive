@@ -1,8 +1,57 @@
 import streamlit as st
-from wordpress_auth import WordpressAuth
+import requests
 
-# Initialize authentication state and auth object
-if 'auth' not in st.session_state:
+# ------------------------------
+# WordPress Authentication Class
+# ------------------------------
+class WordpressAuth:
+    def __init__(self, api_key, base_url):
+        self.api_key = api_key
+        self.base_url = base_url.rstrip("/")
+
+    def get_token(self, username, password):
+        """
+        Authenticate user and fetch JWT token + roles.
+        Returns (token, user_data) or (None, None).
+        """
+        try:
+            # 1. Get JWT token
+            token_url = f"{self.base_url}/wp-json/jwt-auth/v1/token"
+            response = requests.post(token_url, data={
+                "username": username,
+                "password": password
+            })
+
+            if response.status_code != 200:
+                return None, None
+
+            data = response.json()
+            token = data.get("token")
+
+            if not token:
+                return None, None
+
+            # 2. Get user info (to check roles)
+            user_url = f"{self.base_url}/wp-json/wp/v2/users/me"
+            user_res = requests.get(user_url, headers={
+                "Authorization": f"Bearer {token}"
+            })
+
+            if user_res.status_code != 200:
+                return token, {"roles": []}
+
+            user_data = user_res.json()
+            return token, user_data
+
+        except Exception as e:
+            st.error(f"Auth error: {e}")
+            return None, None
+
+
+# ------------------------------
+# Initialize Authentication
+# ------------------------------
+if "auth" not in st.session_state:
     st.session_state.auth = None
 
 def initialize_auth():
@@ -15,28 +64,34 @@ def initialize_auth():
         st.error(f"Missing secret: {e}")
         st.stop()
 
-def authenticate(username, password):
-    """Authenticate user with WordPress."""
-    auth = st.session_state.auth
-    if auth and auth.verify_token(username):  # Replace this with actual token verification logic
-        return True
-    return False
-
 def login(username, password):
     """Handle user login process."""
     auth = st.session_state.auth
     if auth:
-        token = auth.get_token(username, password)  # Implement get_token method in your WordpressAuth class
+        token, user_data = auth.get_token(username, password)
         if token:
+            # Check user role(s)
+            user_roles = user_data.get("roles", [])
+
+            if "customer" in user_roles:
+                st.error("🚫 Access denied. Customer accounts are not allowed.")
+                st.session_state.authenticated = False
+                return
+
+            # Allow login for all other roles
             st.session_state.authenticated = True
             st.session_state.token = token
-            st.success("Login successful!")
+            st.session_state.user_roles = user_roles
+            st.success("✅ Login successful!")
         else:
-            st.error("Invalid username or password")
+            st.error("❌ Invalid username or password")
     else:
         st.error("Authentication system is not initialized.")
 
-# Set page configuration
+
+# ------------------------------
+# Streamlit App Config
+# ------------------------------
 st.set_page_config(
     page_title="VIP Credit Systems",
     page_icon="💳",
@@ -51,7 +106,10 @@ if st.session_state.auth is None:
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 
-# Sidebar for login
+
+# ------------------------------
+# Login Sidebar
+# ------------------------------
 if not st.session_state.authenticated:
     with st.sidebar:
         st.header("Login")
@@ -59,37 +117,36 @@ if not st.session_state.authenticated:
             username = st.text_input("Username")
             password = st.text_input("Password", type="password")
             login_button = st.form_submit_button("Login")
-        
+
         if login_button:
             login(username, password)
 
-        # Add sign-up link to the sidebar
         st.sidebar.markdown("---")
         st.sidebar.markdown("[Sign Up](https://vipbusinesscredit.com/)")
 
-# Main content
+
+# ------------------------------
+# Main Content (Only if logged in)
+# ------------------------------
 if st.session_state.authenticated:
-    # Sidebar with logo and navigation prompt
     with st.sidebar:
         st.image("logooo.png", use_column_width=True)
         st.success("Select a page above.")
 
     col1, col2, col3 = st.columns([1,2,1])
-    
+
     with col2:
-        # Main page logo at the top of the headers
         st.image("logooo.png", use_column_width=True)
 
-        # App Header
         st.title("VIP Credit Systems")
         st.subheader("Your Comprehensive Credit Management Solution")
 
-        # Introduction
         st.write("""
-        Welcome to **VIP Credit Systems**, where managing your credit has never been easier. Our system provides a wide range of tools and insights to help you understand and optimize your credit profile. Below is a detailed list of features we offer to assist you in taking control of your financial future.
+        Welcome to **VIP Credit Systems**, where managing your credit has never been easier. 
+        Our system provides a wide range of tools and insights to help you understand and optimize 
+        your credit profile. Below is a detailed list of features we offer.
         """)
 
-        # Feature List with Descriptions
         st.markdown("""
         ## Features:
         
@@ -135,13 +192,10 @@ if st.session_state.authenticated:
         - 📤 **Export Data**
         """)
 
-        # Conclusion
         st.write("""
-        Explore these features and more in the VIP Credit Systems app. Whether you are looking to improve your credit score, manage your debts, or simply stay on top of your financial health, we've got you covered. Start making informed financial decisions today!
+        Explore these features and more in the VIP Credit Systems app. 
+        Whether you are looking to improve your credit score, manage your debts, 
+        or simply stay on top of your financial health, we've got you covered.
         """)
 else:
-    st.write("Please log in to access the VIP Credit Systems.")
-
-if __name__ == "__main__":
-    # You can add any initialization code here if needed
-    pass
+    st.write("🔐 Please log in to access the VIP Credit Systems.")
