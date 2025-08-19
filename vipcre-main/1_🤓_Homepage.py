@@ -33,6 +33,23 @@ def check_user_role_access(role):
     allowed_roles = ['subscriber', 'administrator']
     return role in allowed_roles
 
+# ------------------------
+# Configuration and User Role Management
+# ------------------------
+
+# You can define user roles here if your WordPress auth doesn't provide role information
+USER_ROLES = {
+    # Example user role assignments - customize these based on your users
+    # 'username': 'role'
+    # 'admin_user': 'administrator',
+    # 'subscriber_user': 'subscriber',
+    # 'customer_user': 'customer',  # This will be denied access
+}
+
+def get_user_role_from_config(username):
+    """Get user role from configuration if WordPress doesn't provide it."""
+    return USER_ROLES.get(username.lower(), 'subscriber')  # Default to subscriber
+
 def get_user_role_from_auth(auth, token, username):
     """Get user role from WordPress auth, with fallback methods."""
     try:
@@ -44,22 +61,26 @@ def get_user_role_from_auth(auth, token, username):
         elif hasattr(auth, 'get_user_info'):
             user_info = auth.get_user_info(token)
             if isinstance(user_info, dict):
-                return user_info.get('role', 'subscriber')  # Default to subscriber
+                return user_info.get('role', get_user_role_from_config(username))
         
         # Fallback: Try user_data method if available
         elif hasattr(auth, 'user_data'):
             user_data = auth.user_data(token)
             if isinstance(user_data, dict):
-                return user_data.get('role', 'subscriber')
+                return user_data.get('role', get_user_role_from_config(username))
+        
+        # Check configuration-based roles
+        elif username.lower() in USER_ROLES:
+            return get_user_role_from_config(username)
         
         # Final fallback: Default to subscriber for valid tokens
         else:
-            st.warning("⚠️ Could not determine user role. Defaulting to 'subscriber'.")
+            st.info("ℹ️ Using default 'subscriber' role. Configure USER_ROLES in the code for custom role assignment.")
             return 'subscriber'
             
     except Exception as e:
-        st.warning(f"⚠️ Error getting user role: {str(e)}. Defaulting to 'subscriber'.")
-        return 'subscriber'
+        st.warning(f"⚠️ Error getting user role: {str(e)}. Using fallback role assignment.")
+        return get_user_role_from_config(username)
 
 def handle_login(username, password, auth):
     """Handle user login process with role-based access control."""
