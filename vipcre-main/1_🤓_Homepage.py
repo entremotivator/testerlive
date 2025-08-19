@@ -1,355 +1,147 @@
 import streamlit as st
 from wordpress_auth import WordpressAuth
 
-# ------------------------
-# Page Configuration
-# ------------------------
-st.set_page_config(
-    page_title="VIP Credit Systems",
-    page_icon="💳",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+# Initialize authentication state and auth object
+if 'auth' not in st.session_state:
+    st.session_state.auth = None
 
-# ------------------------
-# Authentication Functions
-# ------------------------
 def initialize_auth():
-    """Initialize the WordpressAuth instance with secrets."""
+    """Initialize the WordPressAuth instance with secrets."""
     try:
         base_url = st.secrets["general"]["base_url"]
         api_key = st.secrets["general"]["api_key"]
         return WordpressAuth(api_key=api_key, base_url=base_url)
     except KeyError as e:
-        st.error(f"❌ Missing secret configuration: {e}")
-        st.info("Please ensure your secrets.toml file contains the required WordPress configuration.")
-        st.stop()
-    except Exception as e:
-        st.error(f"🔥 Authentication initialization error: {str(e)}")
+        st.error(f"Missing secret: {e}")
         st.stop()
 
-def check_user_role_access(role):
-    """Check if user role has access to the system"""
-    allowed_roles = ['subscriber', 'administrator']
-    return role in allowed_roles
+def authenticate(username, password):
+    """Authenticate user with WordPress."""
+    auth = st.session_state.auth
+    if auth and auth.verify_token(username):  # Replace this with actual token verification logic
+        return True
+    return False
 
-def handle_login(username, password, auth):
-    """Handle user login process with role-based access control."""
-    if not username or not password:
-        st.error("❌ Please enter both username and password")
-        return False
-    
-    try:
-        with st.spinner("🔐 Authenticating..."):
-            token = auth.get_token(username, password)
-            
-            if token and auth.verify_token(token):
-                user_role = auth.get_user_role(token)
-                
-                # Check if user role is allowed
-                if check_user_role_access(user_role):
-                    # Store authentication data
-                    st.session_state.authenticated = True
-                    st.session_state.token = token
-                    st.session_state.user_role = user_role
-                    st.session_state.username = username
-                    
-                    st.success(f"✅ Login successful! Welcome, {user_role.title()}!")
-                    st.rerun()
-                    return True
-                    
-                elif user_role == 'customer':
-                    st.error("🚫 **Access Denied**: Customers are not allowed to access this system.")
-                    st.warning("Please contact an administrator if you need access.")
-                    return False
-                    
-                else:
-                    st.error(f"🚫 **Access Denied**: Your role '{user_role}' is not authorized.")
-                    st.info("Only subscribers and administrators can access this system.")
-                    return False
-            else:
-                st.error("❌ **Authentication Failed**: Invalid credentials. Please try again.")
-                return False
-                
-    except Exception as e:
-        st.error(f"🔥 **Login Error**: {str(e)}")
-        st.info("Please check your connection and try again.")
-        return False
+def login(username, password):
+    """Handle user login process."""
+    auth = st.session_state.auth
+    if auth:
+        token = auth.get_token(username, password)  # Implement get_token method in your WordpressAuth class
+        if token:
+            st.session_state.authenticated = True
+            st.session_state.token = token
+            st.success("Login successful!")
+        else:
+            st.error("Invalid username or password")
+    else:
+        st.error("Authentication system is not initialized.")
 
-# ------------------------
-# Session State Initialization
-# ------------------------
-def init_session_state():
-    """Initialize session state variables"""
-    if 'auth' not in st.session_state:
-        st.session_state.auth = initialize_auth()
-    
-    if 'authenticated' not in st.session_state:
-        st.session_state.authenticated = False
-    
-    if 'user_role' not in st.session_state:
-        st.session_state.user_role = None
+# Set page configuration
+st.set_page_config(
+    page_title="VIP Credit Systems",
+    page_icon="💳",
+    layout="wide"
+)
 
-# ------------------------
-# Login Sidebar
-# ------------------------
-def render_login_sidebar():
-    """Render the login form in the sidebar"""
+# Initialize authentication
+if st.session_state.auth is None:
+    st.session_state.auth = initialize_auth()
+
+# Initialize authentication state
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
+
+# Sidebar for login
+if not st.session_state.authenticated:
     with st.sidebar:
-        st.header("🔐 Login")
-        
+        st.header("Login")
         with st.form(key='login_form'):
-            username = st.text_input("Username", placeholder="Enter your username")
-            password = st.text_input("Password", type="password", placeholder="Enter your password")
-            login_button = st.form_submit_button("🔑 Login", use_container_width=True)
+            username = st.text_input("Username")
+            password = st.text_input("Password", type="password")
+            login_button = st.form_submit_button("Login")
         
         if login_button:
-            handle_login(username, password, st.session_state.auth)
+            login(username, password)
 
-        # Access control information
-        st.markdown("---")
-        st.markdown("**🛡️ Access Control:**")
-        st.success("✅ Administrators - Full Access")
-        st.info("👤 Subscribers - System Access") 
-        st.error("❌ Customers - Access Denied")
-        
-        # Sign-up link
-        st.markdown("---")
-        st.markdown("### 📝 Need an Account?")
-        st.markdown("[**Sign Up Here**](https://vipbusinesscredit.com/)")
+        # Add sign-up link to the sidebar
+        st.sidebar.markdown("---")
+        st.sidebar.markdown("[Sign Up](https://vipbusinesscredit.com/)")
 
-# ------------------------
-# Authenticated Sidebar
-# ------------------------
-def render_authenticated_sidebar():
-    """Render sidebar content for authenticated users"""
+# Main content
+if st.session_state.authenticated:
+    # Sidebar with logo and navigation prompt
     with st.sidebar:
-        # Logo
-        try:
-            st.image("logooo.png", use_column_width=True)
-        except:
-            st.markdown("### 💳 VIP Credit")
-        
-        # User info
-        st.markdown("---")
-        st.success(f"👋 Welcome, {st.session_state.username}!")
-        st.info(f"🎭 Role: {st.session_state.user_role.title()}")
-        
-        # Navigation prompt
-        st.markdown("---")
-        st.markdown("### 🧭 Navigation")
-        st.info("Select a page from the main navigation above.")
-        
-        # Logout button
-        st.markdown("---")
-        if st.button("🔓 Logout", use_container_width=True):
-            # Clear session state
-            for key in ['authenticated', 'token', 'user_role', 'username']:
-                if key in st.session_state:
-                    del st.session_state[key]
-            st.success("👋 Logged out successfully!")
-            st.rerun()
+        st.image("logooo.png", use_column_width=True)
+        st.success("Select a page above.")
 
-# ------------------------
-# Main Content
-# ------------------------
-def render_main_content():
-    """Render the main VIP Credit Systems content"""
-    
-    # Main layout
-    col1, col2, col3 = st.columns([1, 2, 1])
+    col1, col2, col3 = st.columns([1,2,1])
     
     with col2:
-        # Logo at top
-        try:
-            st.image("logooo.png", use_column_width=True)
-        except:
-            st.markdown("# 💳 VIP Credit Systems")
+        # Main page logo at the top of the headers
+        st.image("logooo.png", use_column_width=True)
 
         # App Header
         st.title("VIP Credit Systems")
         st.subheader("Your Comprehensive Credit Management Solution")
 
-        # User-specific welcome message
-        if st.session_state.user_role == 'administrator':
-            st.success("🔓 **Administrator Dashboard** - You have full access to all system features")
-        else:
-            st.info("📊 **Credit Management Dashboard** - Access to all credit tools and insights")
-
         # Introduction
-        st.markdown("""
+        st.write("""
         Welcome to **VIP Credit Systems**, where managing your credit has never been easier. Our system provides a wide range of tools and insights to help you understand and optimize your credit profile. Below is a detailed list of features we offer to assist you in taking control of your financial future.
         """)
 
-        # Feature Categories with Enhanced Styling
-        st.markdown("---")
-        st.markdown("## 🎯 Available Features")
+        # Feature List with Descriptions
+        st.markdown("""
+        ## Features:
         
-        # Credit Overview Section
-        with st.expander("📊 **Credit Overview**", expanded=True):
-            st.markdown("""
-            - 📊 **Credit Score Overview** - Comprehensive view of your current credit score
-            - 💳 **Credit Utilization** - Track your credit usage across all accounts
-            - 🗓️ **Payment History** - Detailed payment tracking and history
-            - 📑 **Credit Report Summary** - Summarized view of your credit report
-            """)
+        ### Credit Overview
+        - 📊 **Credit Score Overview**
+        - 💳 **Credit Utilization**
+        - 🗓️ **Payment History**
+        - 📑 **Credit Report Summary**
 
-        # Account Management Section
-        with st.expander("🔧 **Account Management**"):
-            st.markdown("""
-            - 🔍 **Credit Inquiries** - Monitor hard and soft credit inquiries
-            - 🎯 **Credit Limits** - Track and manage your credit limits
-            - ⚖️ **Debt-to-Income Ratio** - Calculate and monitor your DTI ratio
-            - 💰 **Loan and Credit Card Balances** - Overview of all outstanding balances
-            """)
+        ### Account Management
+        - 🔍 **Credit Inquiries**
+        - 🎯 **Credit Limits**
+        - ⚖️ **Debt-to-Income Ratio**
+        - 💰 **Loan and Credit Card Balances**
 
-        # Analytics and Insights Section
-        with st.expander("📈 **Analytics and Insights**"):
-            st.markdown("""
-            - ⏳ **Account Age** - Track the age of your credit accounts
-            - 💵 **Monthly Payments** - Monitor your monthly payment obligations
-            - 📂 **Credit Accounts Breakdown** - Detailed breakdown by account type
-            - 🏆 **Top 5 Highest Balances** - Identify accounts with highest balances
-            """)
+        ### Analytics and Insights
+        - ⏳ **Account Age**
+        - 💵 **Monthly Payments**
+        - 📂 **Credit Accounts Breakdown**
+        - 🏆 **Top 5 Highest Balances**
 
-        # Transactions and Payments Section
-        with st.expander("💳 **Transactions and Payments**"):
-            st.markdown("""
-            - 📝 **Top 5 Recent Transactions** - Track your latest transactions
-            - 📅 **Upcoming Payments** - Never miss a payment with our calendar
-            - 🔄 **Credit Utilization by Account Type** - Utilization breakdown
-            - 📊 **Average Payment History** - Historical payment performance
-            """)
+        ### Transactions and Payments
+        - 📝 **Top 5 Recent Transactions**
+        - 📅 **Upcoming Payments**
+        - 🔄 **Credit Utilization by Account Type**
+        - 📈 **Average Payment History**
 
-        # Trends and Forecasting Section
-        with st.expander("📊 **Trends and Forecasting**"):
-            st.markdown("""
-            - 📈 **Credit Score Trend** - Track your credit score over time
-            - 💸 **Monthly Spending Trend** - Monitor spending patterns
-            - 📉 **Credit Score vs. Credit Utilization** - Correlation analysis
-            - 📅 **Debt Repayment Schedule** - Plan your debt payoff strategy
-            """)
+        ### Trends and Forecasting
+        - 📊 **Credit Score Trend**
+        - 💸 **Monthly Spending Trend**
+        - 📉 **Credit Score vs. Credit Utilization**
+        - 📅 **Debt Repayment Schedule**
 
-        # Credit Management Tools Section
-        with st.expander("🛠️ **Credit Management Tools**"):
-            st.markdown("""
-            - 🆕 **New Credit Accounts** - Track recently opened accounts
-            - 🧠 **Credit Score Impact Simulation** - Predict score changes
-            - 📉 **Debt Reduction Plan** - Create personalized debt reduction strategies
-            - 💡 **Credit Score Improvement Tips** - Actionable improvement advice
-            """)
+        ### Credit Management Tools
+        - 🆕 **New Credit Accounts**
+        - 🧠 **Credit Score Impact Simulation**
+        - 📉 **Debt Reduction Plan**
+        - 💡 **Credit Score Improvement Tips**
 
-        # Admin-only features
-        if st.session_state.user_role == 'administrator':
-            with st.expander("🔐 **Administrator Tools**", expanded=True):
-                st.markdown("""
-                - 👥 **User Management** - Manage system users and permissions
-                - 📊 **System Analytics** - Monitor system usage and performance
-                - ⚙️ **System Configuration** - Configure system settings
-                - 🔍 **Audit Logs** - Review system activity logs
-                """)
-
-        # Customization and Tools Section
-        with st.expander("⚙️ **Customization and Tools**"):
-            st.markdown("""
-            - ⚠️ **Alerts and Recommendations** - Personalized credit alerts
-            - ✏️ **Edit Credit Info** - Update your credit information
-            - 📤 **Export Data** - Export your data for external analysis
-            - 🔔 **Notification Settings** - Customize your alert preferences
-            """)
-
-        # Call to Action
-        st.markdown("---")
-        st.markdown("### 🚀 Get Started")
-        col_a, col_b, col_c = st.columns(3)
-        
-        with col_a:
-            st.info("📊 **Monitor** your credit score and accounts")
-        with col_b:
-            st.success("📈 **Improve** your credit with our tools")
-        with col_c:
-            st.warning("🎯 **Achieve** your financial goals")
+        ### Customization and Alerts
+        - ⚠️ **Alerts and Recommendations**
+        - ✏️ **Edit Credit Info**
+        - 📤 **Export Data**
+        """)
 
         # Conclusion
-        st.markdown("""
-        ---
-        **Ready to take control of your credit?** Explore these features and more in the VIP Credit Systems app. Whether you are looking to improve your credit score, manage your debts, or simply stay on top of your financial health, we've got you covered. Start making informed financial decisions today!
+        st.write("""
+        Explore these features and more in the VIP Credit Systems app. Whether you are looking to improve your credit score, manage your debts, or simply stay on top of your financial health, we've got you covered. Start making informed financial decisions today!
         """)
+else:
+    st.write("Please log in to access the VIP Credit Systems.")
 
-# ------------------------
-# Unauthenticated Content
-# ------------------------
-def render_unauthenticated_content():
-    """Render content for users who are not logged in"""
-    col1, col2, col3 = st.columns([1, 2, 1])
-    
-    with col2:
-        # Logo
-        try:
-            st.image("logooo.png", use_column_width=True)
-        except:
-            st.markdown("# 💳 VIP Credit Systems")
-        
-        st.title("VIP Credit Systems")
-        st.subheader("Your Comprehensive Credit Management Solution")
-        
-        # Login prompt
-        st.info("🔐 **Please log in to access the VIP Credit Systems.**")
-        
-        # Features preview
-        st.markdown("""
-        ### What You'll Get Access To:
-        
-        ✅ **Real-time Credit Monitoring**  
-        ✅ **Comprehensive Credit Analytics**  
-        ✅ **Personalized Improvement Plans**  
-        ✅ **Payment Tracking & Alerts**  
-        ✅ **Debt Management Tools**  
-        ✅ **Credit Score Simulators**  
-        
-        ---
-        
-        🔑 **Use the login form in the sidebar to get started!**
-        """)
-        
-        # Access information
-        st.warning("""
-        **Important:** This system is available to subscribers and administrators only. 
-        Customers do not have access to this platform.
-        """)
-
-# ------------------------
-# Main Application
-# ------------------------
-def main():
-    """Main application entry point"""
-    # Initialize session state
-    init_session_state()
-    
-    # Verify token if user claims to be authenticated
-    if st.session_state.authenticated:
-        try:
-            if not st.session_state.auth.verify_token(st.session_state.token):
-                # Token is invalid, reset authentication
-                st.session_state.authenticated = False
-                st.warning("🔄 Session expired. Please log in again.")
-                st.rerun()
-        except:
-            # Error verifying token, reset authentication
-            st.session_state.authenticated = False
-            st.error("❌ Authentication error. Please log in again.")
-            st.rerun()
-    
-    # Render appropriate content based on authentication status
-    if st.session_state.authenticated:
-        render_authenticated_sidebar()
-        render_main_content()
-    else:
-        render_login_sidebar()
-        render_unauthenticated_content()
-
-# ------------------------
-# Run Application
-# ------------------------
 if __name__ == "__main__":
-    main()
+    # You can add any initialization code here if needed
+    pass
