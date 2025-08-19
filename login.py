@@ -55,25 +55,25 @@ def handle_login(username, password, auth):
 
         user_role = user_role.lower()
 
-        # ONLY allow subscriber and administrator roles
-        if user_role not in ['subscriber', 'administrator']:
+        # Deny access for 'customer'
+        if user_role == 'customer':
             st.error("🚫 **Access Denied**")
-            st.warning(f"""
-            ### Your account role: **{user_role.title()}**
+            st.warning("""
+            ### Your account needs to be upgraded to access VIP Credit Systems.
             
-            **This system is restricted to:**
-            - ✅ **Subscriber** accounts
-            - ✅ **Administrator** accounts
+            **Options to get access:**
+            - 🌟 [**Join our VIP Program**](https://vipbusinesscredit.com/)
+            - 💳 [**Update your payment information**](https://vipbusinesscredit.com/)
             
-            **Your role "{user_role}" is not authorized.**
-            
-            **To gain access:**
-            - 📞 [**Contact Support**](https://vipbusinesscredit.com/)
-            - 🔄 Request role upgrade from administrator
+            **VIP benefits:**
+            - Complete credit monitoring
+            - Advanced credit building tools
+            - Expert guidance & personalized support
+            - Business credit optimization strategies
             """)
             return False
 
-        # Allow access for subscriber and administrator only
+        # Allow access for other roles
         st.session_state.authenticated = True
         st.session_state.user_role = user_role
         st.session_state.token = token
@@ -101,7 +101,7 @@ def login_page():
     with col2:
         # Logo
         try:
-            st.image("logooo.png", use_container_width=True)
+            st.image("logooo.png", use_column_width=True)
         except:
             st.title("💳 VIP Credit Systems")
 
@@ -156,10 +156,9 @@ def login_page():
 
             **Account Access Levels:**
             - ✅ **Administrator** - Full system access
-            - ✅ **Subscriber** - Credit dashboard access
-            - ❌ **Customer** - Not authorized
-            - ❌ **Editor/Author** - Not authorized
-            - ❌ **Other roles** - Not authorized
+            - ✅ **Subscriber** - Credit dashboard access  
+            - ✅ **Editor/Author** - Standard access
+            - ❌ **Customer** - Requires VIP upgrade
             """)
 
 # ------------------------
