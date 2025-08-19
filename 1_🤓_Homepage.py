@@ -1,20 +1,9 @@
 import streamlit as st
 from wordpress_auth import WordpressAuth
 
-# Set page configuration
-st.set_page_config(
-    page_title="VIP Credit Systems",
-    page_icon="💳",
-    layout="wide"
-)
-
-# Initialize authentication state
-if 'authenticated' not in st.session_state:
-    st.session_state.authenticated = False
-if 'user_role' not in st.session_state:
-    st.session_state.user_role = None
-if 'token' not in st.session_state:
-    st.session_state.token = None
+# Initialize authentication state and auth object
+if 'auth' not in st.session_state:
+    st.session_state.auth = None
 
 def initialize_auth():
     """Initialize the WordPressAuth instance with secrets."""
@@ -23,243 +12,136 @@ def initialize_auth():
         api_key = st.secrets["general"]["api_key"]
         return WordpressAuth(api_key=api_key, base_url=base_url)
     except KeyError as e:
-        st.error(f"Missing secret configuration: {e}")
+        st.error(f"Missing secret: {e}")
         st.stop()
 
-def handle_login(username, password, auth):
-    """Handle user login and role verification."""
-    try:
-        # Get authentication token
-        token = auth.get_token(username, password)
-        
-        if token and auth.verify_token(token):
-            user_role = auth.get_user_role(token)
-            
-            # Check if user role is 'customer' - deny access
-            if user_role == 'customer':
-                st.sidebar.error("🚫 **Access Denied**")
-                st.sidebar.warning("""
-                **Account upgrade required**
-                
-                Your account needs VIP access to use this system.
-                
-                [**Join VIP Program**](https://vipbusinesscredit.com/)
-                """)
-                return False
-            
-            # Allow access for all other roles
+def authenticate(username, password):
+    """Authenticate user with WordPress."""
+    auth = st.session_state.auth
+    if auth and auth.verify_token(username):  # Replace this with actual token verification logic
+        return True
+    return False
+
+def login(username, password):
+    """Handle user login process."""
+    auth = st.session_state.auth
+    if auth:
+        token = auth.get_token(username, password)  # Implement get_token method in your WordpressAuth class
+        if token:
             st.session_state.authenticated = True
-            st.session_state.user_role = user_role
             st.session_state.token = token
-            st.sidebar.success(f"✅ Welcome, {user_role.title()}!")
-            st.rerun()
-            return True
-            
+            st.success("Login successful!")
         else:
-            st.sidebar.error("❌ Invalid credentials")
-            return False
-            
-    except Exception as e:
-        st.sidebar.error(f"Login error: {str(e)}")
-        return False
+            st.error("Invalid username or password")
+    else:
+        st.error("Authentication system is not initialized.")
 
-def logout():
-    """Handle user logout."""
+# Set page configuration
+st.set_page_config(
+    page_title="VIP Credit Systems",
+    page_icon="💳",
+    layout="wide"
+)
+
+# Initialize authentication
+if st.session_state.auth is None:
+    st.session_state.auth = initialize_auth()
+
+# Initialize authentication state
+if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
-    st.session_state.user_role = None
-    st.session_state.token = None
-    st.rerun()
 
-def sidebar_content():
-    """Handle sidebar content - login form or user info."""
+# Sidebar for login
+if not st.session_state.authenticated:
     with st.sidebar:
-        # Logo
-        try:
-            st.image("logooo.png", use_column_width=True)
-        except:
-            st.markdown("### 💳 VIP Credit")
+        st.header("Login")
+        with st.form(key='login_form'):
+            username = st.text_input("Username")
+            password = st.text_input("Password", type="password")
+            login_button = st.form_submit_button("Login")
         
-        if not st.session_state.authenticated:
-            # Login Form
-            st.markdown("### 🔐 Login")
-            
-            with st.form("sidebar_login_form"):
-                username = st.text_input("Username", placeholder="Enter username")
-                password = st.text_input("Password", type="password", placeholder="Enter password")
-                login_button = st.form_submit_button("Login", use_container_width=True)
-                
-                if login_button and username and password:
-                    auth = initialize_auth()
-                    handle_login(username, password, auth)
-            
-            # Sign up section
-            st.markdown("---")
-            st.markdown("**New User?**")
-            st.markdown("[🌟 Join VIP Program](https://vipbusinesscredit.com/)")
-            
-            # Help section
-            with st.expander("❓ Access Levels"):
-                st.markdown("""
-                **Allowed:**
-                - ✅ Administrator
-                - ✅ Subscriber  
-                - ✅ Editor/Author
-                
-                **Requires Upgrade:**
-                - ❌ Customer
-                """)
-                
-        else:
-            # User info and logout
-            st.success(f"👤 {st.session_state.user_role.title()}")
-            
-            if st.button("🚪 Logout", use_container_width=True):
-                logout()
-            
-            st.markdown("---")
-            st.info("📌 Select a page above to navigate")
+        if login_button:
+            login(username, password)
 
-def main_content():
-    """Display the main home page content."""
-    col1, col2, col3 = st.columns([1, 2, 1])
+        # Add sign-up link to the sidebar
+        st.sidebar.markdown("---")
+        st.sidebar.markdown("[Sign Up](https://vipbusinesscredit.com/)")
+
+# Main content
+if st.session_state.authenticated:
+    # Sidebar with logo and navigation prompt
+    with st.sidebar:
+        st.image("logooo.png", use_column_width=True)
+        st.success("Select a page above.")
+
+    col1, col2, col3 = st.columns([1,2,1])
     
     with col2:
-        # Main logo
-        try:
-            st.image("logooo.png", use_column_width=True)
-        except:
-            st.title("💳 VIP Credit Systems")
+        # Main page logo at the top of the headers
+        st.image("logooo.png", use_column_width=True)
 
+        # App Header
         st.title("VIP Credit Systems")
         st.subheader("Your Comprehensive Credit Management Solution")
 
-        if st.session_state.authenticated:
-            # Welcome message for authenticated users
-            if st.session_state.user_role == 'administrator':
-                st.info("🛠️ **Administrator Access** - Full system privileges")
-            elif st.session_state.user_role == 'subscriber':
-                st.info("📊 **Subscriber Access** - Credit dashboard enabled")
-            else:
-                st.info(f"✅ **{st.session_state.user_role.title()} Access** - Welcome!")
+        # Introduction
+        st.write("""
+        Welcome to **VIP Credit Systems**, where managing your credit has never been easier. Our system provides a wide range of tools and insights to help you understand and optimize your credit profile. Below is a detailed list of features we offer to assist you in taking control of your financial future.
+        """)
 
-            # Introduction for authenticated users
-            st.write("""
-            Welcome to **VIP Credit Systems**! Your comprehensive credit management dashboard is ready. 
-            Use the navigation menu above to access all features and start optimizing your credit profile.
-            """)
+        # Feature List with Descriptions
+        st.markdown("""
+        ## Features:
+        
+        ### Credit Overview
+        - 📊 **Credit Score Overview**
+        - 💳 **Credit Utilization**
+        - 🗓️ **Payment History**
+        - 📑 **Credit Report Summary**
 
-            # Feature categories
-            st.markdown("## 🎯 Available Features")
-            
-            # Credit Overview Section
-            with st.expander("📊 Credit Overview", expanded=True):
-                st.markdown("""
-                - **Credit Score Overview** - Real-time credit score monitoring
-                - **Credit Utilization** - Track your credit usage across all accounts
-                - **Payment History** - Comprehensive payment tracking
-                - **Credit Report Summary** - Detailed credit report analysis
-                """)
+        ### Account Management
+        - 🔍 **Credit Inquiries**
+        - 🎯 **Credit Limits**
+        - ⚖️ **Debt-to-Income Ratio**
+        - 💰 **Loan and Credit Card Balances**
 
-            # Account Management Section
-            with st.expander("🔧 Account Management"):
-                st.markdown("""
-                - **Credit Inquiries** - Monitor hard and soft credit pulls
-                - **Credit Limits** - Track and optimize credit limits
-                - **Debt-to-Income Ratio** - Calculate and monitor DTI
-                - **Account Balances** - Overview of all loan and credit card balances
-                """)
+        ### Analytics and Insights
+        - ⏳ **Account Age**
+        - 💵 **Monthly Payments**
+        - 📂 **Credit Accounts Breakdown**
+        - 🏆 **Top 5 Highest Balances**
 
-            # Analytics Section
-            with st.expander("📈 Analytics & Insights"):
-                st.markdown("""
-                - **Account Age Analysis** - Track credit history length
-                - **Monthly Payment Tracking** - Monitor payment patterns
-                - **Credit Account Breakdown** - Detailed account analysis
-                - **Top Account Balances** - Focus on highest impact accounts
-                """)
+        ### Transactions and Payments
+        - 📝 **Top 5 Recent Transactions**
+        - 📅 **Upcoming Payments**
+        - 🔄 **Credit Utilization by Account Type**
+        - 📈 **Average Payment History**
 
-            # Tools Section
-            with st.expander("🛠️ Credit Management Tools"):
-                st.markdown("""
-                - **Credit Score Simulation** - Preview impact of financial decisions
-                - **Debt Reduction Planning** - Strategic payoff planning
-                - **Credit Building Tips** - Personalized improvement recommendations
-                - **Alert System** - Stay informed of important changes
-                """)
+        ### Trends and Forecasting
+        - 📊 **Credit Score Trend**
+        - 💸 **Monthly Spending Trend**
+        - 📉 **Credit Score vs. Credit Utilization**
+        - 📅 **Debt Repayment Schedule**
 
-            # Trends and Forecasting Section
-            with st.expander("📊 Trends & Forecasting"):
-                st.markdown("""
-                - **Credit Score Trend** - Historical score tracking and projections
-                - **Monthly Spending Trend** - Analyze spending patterns over time
-                - **Credit Score vs. Credit Utilization** - Correlation analysis
-                - **Debt Repayment Schedule** - Strategic payoff timeline
-                """)
+        ### Credit Management Tools
+        - 🆕 **New Credit Accounts**
+        - 🧠 **Credit Score Impact Simulation**
+        - 📉 **Debt Reduction Plan**
+        - 💡 **Credit Score Improvement Tips**
 
-            # Call to action
-            st.markdown("---")
-            st.success("""
-            🚀 **Ready to get started?** 
-            
-            Use the navigation menu above to explore your credit management tools and start optimizing your financial profile today!
-            """)
-            
-        else:
-            # Content for non-authenticated users
-            st.write("""
-            Welcome to **VIP Credit Systems**, where managing your credit has never been easier. 
-            Our system provides comprehensive tools and insights to help you understand and optimize your credit profile.
-            
-            **Please log in using the sidebar to access your credit management dashboard.**
-            """)
+        ### Customization and Alerts
+        - ⚠️ **Alerts and Recommendations**
+        - ✏️ **Edit Credit Info**
+        - 📤 **Export Data**
+        """)
 
-            # Preview of features
-            st.markdown("## 🎯 System Features Preview")
-            
-            col_feat1, col_feat2 = st.columns(2)
-            
-            with col_feat1:
-                st.markdown("""
-                ### 📊 Credit Monitoring
-                - Real-time credit score tracking
-                - Credit utilization monitoring
-                - Payment history analysis
-                - Credit report summaries
-                """)
-                
-                st.markdown("""
-                ### 🔧 Account Management
-                - Credit inquiry tracking
-                - Credit limit optimization
-                - Debt-to-income calculations
-                - Balance management tools
-                """)
-            
-            with col_feat2:
-                st.markdown("""
-                ### 📈 Analytics & Insights
-                - Account age analysis
-                - Payment pattern tracking
-                - Credit breakdown reports
-                - Balance prioritization
-                """)
-                
-                st.markdown("""
-                ### 🛠️ Management Tools
-                - Credit score simulation
-                - Debt reduction planning
-                - Improvement recommendations
-                - Custom alert system
-                """)
+        # Conclusion
+        st.write("""
+        Explore these features and more in the VIP Credit Systems app. Whether you are looking to improve your credit score, manage your debts, or simply stay on top of your financial health, we've got you covered. Start making informed financial decisions today!
+        """)
+else:
+    st.write("Please log in to access the VIP Credit Systems.")
 
-            # Sign up call to action
-            st.markdown("---")
-            st.info("""
-            🌟 **New to VIP Credit Systems?** 
-            
-            [**Join our VIP Business Credit Program**](https://vipbusinesscredit.com/) to get full access to all credit management tools and expert guidance!
-            """)
-
-# Main application logic
-sidebar_content()
-main_content()
+if __name__ == "__main__":
+    # You can add any initialization code here if needed
+    pass
