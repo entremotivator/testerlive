@@ -101,7 +101,7 @@ def login_page():
     with col2:
         # Logo
         try:
-            st.image("logooo.png", use_column_width=True)
+            st.image("logooo.png", use_container_width=True)
         except:
             st.title("💳 VIP Credit Systems")
 
