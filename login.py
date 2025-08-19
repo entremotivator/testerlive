@@ -5,7 +5,7 @@ from wordpress_auth import WordpressAuth
 # Page configuration
 # ------------------------
 st.set_page_config(
-    page_title="VIP Credit Systems - Secure Login",
+    page_title="VIP Credit Systems - Login",
     page_icon="🔐",
     layout="wide"
 )
@@ -15,31 +15,19 @@ st.set_page_config(
 # ------------------------
 if 'authenticated' not in st.session_state:
     st.session_state.authenticated = False
-if 'user_role' not in st.session_state:
-    st.session_state.user_role = None
+if 'user_info' not in st.session_state:
+    st.session_state.user_info = None
 if 'token' not in st.session_state:
     st.session_state.token = None
-if 'login_attempts' not in st.session_state:
-    st.session_state.login_attempts = 0
 
-# Security configuration - ONLY these roles are permitted
-AUTHORIZED_ROLES = {
-    'subscriber': {
-        'name': 'Subscriber',
-        'access_level': 'standard',
-        'description': 'Credit monitoring and dashboard access',
-        'permissions': ['view_dashboard', 'view_reports']
-    },
-    'administrator': {
-        'name': 'Administrator',
-        'access_level': 'full', 
-        'description': 'Complete system administration access',
-        'permissions': ['view_dashboard', 'view_reports', 'manage_users', 'system_config']
-    }
+# Alternative approach: Define authorized usernames or use flexible validation
+# You can replace this with actual usernames of subscribers and administrators
+AUTHORIZED_USERS = {
+    # Add actual usernames here - example:
+    # 'admin_user': 'administrator',
+    # 'subscriber1': 'subscriber',
+    # 'subscriber2': 'subscriber'
 }
-
-# Maximum login attempts before temporary lockout
-MAX_LOGIN_ATTEMPTS = 5
 
 # ------------------------
 # Initialize WordPress authentication
@@ -54,264 +42,228 @@ def initialize_auth():
         st.error(f"Missing secret configuration: {e}")
         st.stop()
 
-def validate_user_authorization(user_role):
-    """
-    Comprehensive user role validation.
-    Returns: (is_authorized, role_data, error_message)
-    """
-    if not user_role:
-        return False, None, "Unable to determine user role"
-    
-    # Normalize role for comparison
-    normalized_role = user_role.lower().strip()
-    
-    # Check if role is in authorized list
-    if normalized_role in AUTHORIZED_ROLES:
-        return True, AUTHORIZED_ROLES[normalized_role], None
-    
-    # Generate specific error message for unauthorized roles
-    error_msg = f"Role '{user_role}' is not authorized for system access"
-    return False, None, error_msg
+def get_user_info_safe(auth, token):
+    """Safely get user information with available methods."""
+    try:
+        user_info = {}
+        
+        # Try to get username
+        if hasattr(auth, 'get_username'):
+            user_info['username'] = auth.get_username(token)
+        elif hasattr(auth, 'get_user'):
+            user_data = auth.get_user(token)
+            if isinstance(user_data, dict):
+                user_info.update(user_data)
+            else:
+                user_info['username'] = str(user_data)
+        
+        # Try to get user ID
+        if hasattr(auth, 'get_user_id'):
+            user_info['user_id'] = auth.get_user_id(token)
+            
+        # Try to get any user role if method exists
+        if hasattr(auth, 'get_user_role'):
+            user_info['role'] = auth.get_user_role(token)
+        elif hasattr(auth, 'get_role'):
+            user_info['role'] = auth.get_role(token)
+            
+        return user_info if user_info else None
+        
+    except Exception as e:
+        st.error(f"Error getting user info: {str(e)}")
+        return None
 
-def check_login_attempts():
-    """Check if user has exceeded maximum login attempts."""
-    return st.session_state.login_attempts >= MAX_LOGIN_ATTEMPTS
-
-def reset_login_attempts():
-    """Reset login attempt counter."""
-    st.session_state.login_attempts = 0
-
-def increment_login_attempts():
-    """Increment login attempt counter."""
-    st.session_state.login_attempts += 1
+def is_user_authorized(user_info):
+    """Check if user is authorized based on available information."""
+    if not user_info:
+        return False, "No user information available"
+    
+    # Method 1: Check against authorized usernames list
+    username = user_info.get('username', '').lower()
+    if username in [u.lower() for u in AUTHORIZED_USERS.keys()]:
+        return True, f"Authorized user: {username}"
+    
+    # Method 2: Check role if available
+    role = user_info.get('role', '').lower()
+    if role in ['subscriber', 'administrator']:
+        return True, f"Authorized role: {role}"
+    
+    # Method 3: Block known restricted roles
+    if role == 'customer':
+        return False, f"Customer role is not authorized for system access"
+    
+    # Method 4: If no specific restrictions and user has valid token, you can choose to:
+    # Option A: Allow access (less secure)
+    # Option B: Deny access (more secure) - current implementation
+    if username and not role:
+        return False, f"Cannot verify authorization for user: {username} (role unknown)"
+    
+    return False, f"User not authorized - Username: {username}, Role: {role}"
 
 # ------------------------
-# Enhanced login handler with comprehensive security
+# Handle login with flexible authorization
 # ------------------------
 def handle_login(username, password, auth):
-    """
-    Secure authentication with comprehensive role validation and attempt tracking.
-    """
-    # Check login attempt limit
-    if check_login_attempts():
-        st.error("🚫 **Account Temporarily Locked**")
-        st.warning(f"""
-        Too many failed login attempts ({MAX_LOGIN_ATTEMPTS}).
-        Please contact support to unlock your account.
-        
-        [**Contact Support**](https://vipbusinesscredit.com/)
-        """)
-        return False
-    
+    """Authenticate user with flexible authorization checking."""
     try:
-        # Step 1: Authenticate with WordPress
-        with st.spinner("🔄 Authenticating credentials..."):
-            token = auth.get_token(username, password)
-            
+        token = auth.get_token(username, password)
         if not token:
-            increment_login_attempts()
-            remaining = MAX_LOGIN_ATTEMPTS - st.session_state.login_attempts
-            st.error(f"❌ **Authentication failed.** {remaining} attempts remaining.")
+            st.error("❌ **Invalid username or password.** Please try again.")
             return False
 
-        # Step 2: Verify token validity
-        with st.spinner("🔄 Verifying token..."):
-            if not auth.verify_token(token):
-                increment_login_attempts()
-                st.error("❌ **Token verification failed.**")
-                return False
+        if not auth.verify_token(token):
+            st.error("❌ **Token verification failed.**")
+            return False
 
-        # Step 3: Get user role and validate authorization
-        with st.spinner("🔄 Validating permissions..."):
-            user_role = auth.get_user_role(token)
-            is_authorized, role_data, error_msg = validate_user_authorization(user_role)
-
+        # Get user information
+        user_info = get_user_info_safe(auth, token)
+        
+        # Check authorization
+        is_authorized, auth_message = is_user_authorized(user_info)
+        
         if not is_authorized:
-            increment_login_attempts()
-            st.error("🚫 **Access Denied - Insufficient Privileges**")
+            st.error("🚫 **Access Denied**")
             st.warning(f"""
             ### Authorization Failed
             
-            **Your Role:** {user_role or 'Unknown'}
-            **Error:** {error_msg}
+            **Details:** {auth_message}
             
-            **This system requires one of the following authorized roles:**
-            """)
+            **This system is restricted to:**
+            - ✅ **Subscriber** accounts
+            - ✅ **Administrator** accounts
+            - ✅ **Authorized users**
             
-            # Display authorized roles
-            for role_key, role_info in AUTHORIZED_ROLES.items():
-                st.markdown(f"- ✅ **{role_info['name']}** - {role_info['description']}")
+            **Not allowed:**
+            - ❌ **Customer** accounts
+            - ❌ **Unauthorized roles**
             
-            st.markdown("""
             **To gain access:**
             - 📞 [**Contact Support**](https://vipbusinesscredit.com/)
             - 🔄 Request role upgrade from your administrator
-            - 📧 Verify your account permissions
             """)
             return False
 
-        # Step 4: Grant access and reset attempt counter
-        reset_login_attempts()
+        # Allow access
         st.session_state.authenticated = True
-        st.session_state.user_role = user_role.lower()
+        st.session_state.user_info = user_info
         st.session_state.token = token
         
-        st.success(f"✅ **Authentication Successful!**")
-        st.info(f"Welcome, {role_data['name']} - {role_data['description']}")
+        display_name = user_info.get('username', 'User')
+        role = user_info.get('role', 'Authorized User')
+        
+        st.success(f"✅ **Welcome!** Logged in as {display_name}")
+        st.info(f"Access Level: {role.title()}")
         st.balloons()
-        
-        # Show permissions
-        with st.expander("🔑 Your Access Permissions"):
-            for permission in role_data['permissions']:
-                st.markdown(f"✅ {permission.replace('_', ' ').title()}")
-        
-        st.info("🔄 Redirecting to secure dashboard...")
+        st.info("🔄 Redirecting to your dashboard...")
         st.rerun()
         return True
 
     except Exception as e:
-        increment_login_attempts()
-        st.error(f"🚨 **System Error:** {str(e)}")
-        st.warning("If this error persists, please contact technical support.")
+        st.error(f"🚨 Login error: {str(e)}")
         return False
 
 # ------------------------
-# Secure login page UI
+# Login page UI
 # ------------------------
 def login_page():
-    """Display secure login interface with comprehensive access control."""
-    
-    # Check if already authenticated
+    """Display login interface with flexible access control."""
     if st.session_state.authenticated:
-        role_data = AUTHORIZED_ROLES.get(st.session_state.user_role, {})
-        st.success(f"✅ Already authenticated as {role_data.get('name', st.session_state.user_role.title())}")
-        st.info("🏠 [Access Your Dashboard](Home)")
-        
-        if st.button("🚪 Logout", type="secondary"):
-            for key in ['authenticated', 'user_role', 'token']:
-                if key in st.session_state:
-                    del st.session_state[key]
-            reset_login_attempts()
-            st.rerun()
+        user_info = st.session_state.user_info or {}
+        display_name = user_info.get('username', 'User')
+        st.success(f"✅ Already logged in as {display_name}")
+        st.info("🏠 [Go to Home Page](Home)")
         return
 
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        # Logo and title
+        # Logo
         try:
             st.image("logooo.png", use_column_width=True)
         except:
             st.title("💳 VIP Credit Systems")
 
-        st.markdown("### 🔐 Secure System Access")
-        st.markdown("**Role-Based Authentication Portal**")
-
-        # Security status indicator
-        if check_login_attempts():
-            st.error(f"🔒 **Account Locked** - {st.session_state.login_attempts}/{MAX_LOGIN_ATTEMPTS} attempts used")
-        else:
-            remaining = MAX_LOGIN_ATTEMPTS - st.session_state.login_attempts
-            if st.session_state.login_attempts > 0:
-                st.warning(f"⚠️ **{st.session_state.login_attempts}/{MAX_LOGIN_ATTEMPTS}** failed attempts - {remaining} remaining")
+        st.markdown("### 🔐 Secure Login")
+        st.markdown("Access control with flexible authorization")
 
         # Access requirements notice
         st.info("""
-        🔒 **Authorized Access Only**
-        
-        This system implements strict role-based access control. Only users with 
-        **Subscriber** or **Administrator** roles are permitted to access the platform.
+        🔒 **Access Requirements:**
+        - ✅ **Subscriber** accounts
+        - ✅ **Administrator** accounts  
+        - ✅ **Authorized users**
+        - ❌ **Customer** accounts (restricted)
+        - ❌ **Unauthorized roles**
         """)
 
         # Login form
-        with st.form("secure_login_form", clear_on_submit=False):
-            st.markdown("#### 🔑 Authentication Credentials")
-            
-            username = st.text_input(
-                "Username", 
-                placeholder="Enter your WordPress username",
-                help="Use your WordPress account username",
-                disabled=check_login_attempts()
-            )
-            
-            password = st.text_input(
-                "Password", 
-                type="password", 
-                placeholder="Enter your WordPress password",
-                help="Use your WordPress account password",
-                disabled=check_login_attempts()
-            )
+        with st.form("login_form", clear_on_submit=False):
+            st.markdown("#### Enter Your Credentials")
+            username = st.text_input("Username", placeholder="Enter your username", help="Use your WordPress username")
+            password = st.text_input("Password", type="password", placeholder="Enter your password", help="Use your WordPress password")
 
             col_login, col_clear = st.columns([3, 1])
             with col_login:
-                login_button = st.form_submit_button(
-                    "🔐 Authenticate & Authorize", 
-                    use_container_width=True, 
-                    type="primary",
-                    disabled=check_login_attempts()
-                )
+                login_button = st.form_submit_button("🔐 Login", use_container_width=True, type="primary")
             with col_clear:
-                clear_button = st.form_submit_button("🗑️ Clear", disabled=check_login_attempts())
+                clear_button = st.form_submit_button("🗑️ Clear")
 
-            if login_button and username and password and not check_login_attempts():
-                auth = initialize_auth()
-                handle_login(username, password, auth)
+            if login_button and username and password:
+                with st.spinner("🔄 Authenticating and checking authorization..."):
+                    auth = initialize_auth()
+                    handle_login(username, password, auth)
 
             if clear_button:
                 st.rerun()
 
-        # Authorization information
         st.markdown("---")
-        st.markdown("### 🔐 Access Authorization Matrix")
+        st.markdown("### 🔐 Authorization Information")
 
-        col_auth, col_contact = st.columns([1, 1])
-        with col_auth:
-            st.markdown("**✅ Authorized Roles:**")
-            for role_key, role_data in AUTHORIZED_ROLES.items():
-                st.markdown(f"- 🛡️ **{role_data['name']}**")
-                st.caption(f"   {role_data['description']}")
-        
+        col_access, col_contact = st.columns([1, 1])
+        with col_access:
+            st.markdown("""
+            **Authorized Access:**
+            - 🛠️ **Administrator** - Full system access
+            - 📊 **Subscriber** - Dashboard access
+            - ✅ **Authorized users** - Verified access
+            """)
         with col_contact:
-            st.markdown("**📞 Need Access?**")
             st.markdown("""
-            - [**Contact Support**](https://vipbusinesscredit.com/)
-            - Request role upgrade
-            - Verify account status
+            **Need Access?**
+            - 📞 [**Contact Support**](https://vipbusinesscredit.com/)
+            - 🔄 Request authorization
+            - 📧 Verify account status
             """)
 
-        # Security and help information
         st.markdown("---")
-        with st.expander("🛡️ Security & Access Information"):
+        with st.expander("❓ Access Control & Troubleshooting"):
             st.markdown("""
-            ### Security Features
-            - **Role-Based Access Control (RBAC)** - Only authorized roles can access the system
-            - **Token-Based Authentication** - Secure WordPress integration
-            - **Attempt Limiting** - Protection against brute force attacks
-            - **Session Management** - Secure session handling and timeout
+            **Access Control System:**
+            This system uses flexible authorization that checks multiple factors:
+            1. **Role-based access** - Subscriber and Administrator roles are automatically authorized
+            2. **User-based access** - Specific authorized users can be granted access
+            3. **Restriction enforcement** - Customer roles and unauthorized users are blocked
             
-            ### Access Requirements
-            This system requires one of the following WordPress roles:
-            """)
+            **Authorization Process:**
+            1. Username and password verification
+            2. Token validation
+            3. User information retrieval
+            4. Authorization level checking
+            5. Access granted or denied based on criteria
             
-            for role_key, role_data in AUTHORIZED_ROLES.items():
-                st.markdown(f"""
-                **{role_data['name']} ({role_data['access_level']} access)**
-                - Description: {role_data['description']}
-                - Permissions: {', '.join(role_data['permissions'])}
-                """)
+            **If you're having access issues:**
+            - Verify your WordPress credentials are correct
+            - Check that your account role is properly assigned
+            - Ensure your account is active and not suspended
+            - Contact support if you believe you should have access
             
-            st.markdown("""
-            ### Troubleshooting
-            **If you're unable to access the system:**
-            1. Verify your WordPress credentials are correct
-            2. Confirm your account role with your administrator
-            3. Ensure your account is active and not suspended
-            4. Contact support if you believe you should have access
-            
-            **Account locked?** Contact support to reset your login attempts.
+            **Troubleshooting Authentication Errors:**
+            - "Role method not found" - Contact support for system configuration
+            - "Cannot verify authorization" - Your role may need to be updated
+            - "User not authorized" - Request access upgrade from administrator
             """)
 
 # ------------------------
-# Run the secure login page
+# Run the page
 # ------------------------
 login_page()
 
