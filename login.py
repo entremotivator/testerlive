@@ -1,28 +1,59 @@
 import streamlit as st
-from wordpress_auth import WordpressAuth
+import requests
 
-# ------------------------
-# Page configuration
-# ------------------------
-st.set_page_config(
-    page_title="VIP Credit Systems - Login",
-    page_icon="🔐",
-    layout="wide"
-)
+# ------------------------------
+# WordPress Authentication Class
+# ------------------------------
+class WordpressAuth:
+    def __init__(self, api_key, base_url):
+        self.api_key = api_key
+        self.base_url = base_url.rstrip("/")
 
-# ------------------------
-# Initialize session state
-# ------------------------
-if 'authenticated' not in st.session_state:
-    st.session_state.authenticated = False
-if 'user_role' not in st.session_state:
-    st.session_state.user_role = None
-if 'token' not in st.session_state:
-    st.session_state.token = None
+    def get_token(self, username, password):
+        """
+        Authenticate user and fetch JWT token + roles.
+        Returns (token, user_data) or (None, None).
+        """
+        try:
+            # 1. Get JWT token
+            token_url = f"{self.base_url}/wp-json/jwt-auth/v1/token"
+            response = requests.post(token_url, data={
+                "username": username,
+                "password": password
+            })
 
-# ------------------------
-# Initialize WordPress authentication
-# ------------------------
+            if response.status_code != 200:
+                return None, None
+
+            data = response.json()
+            token = data.get("token")
+
+            if not token:
+                return None, None
+
+            # 2. Get user info (to check roles)
+            user_url = f"{self.base_url}/wp-json/wp/v2/users/me"
+            user_res = requests.get(user_url, headers={
+                "Authorization": f"Bearer {token}"
+            })
+
+            if user_res.status_code != 200:
+                return token, {"roles": []}
+
+            user_data = user_res.json()
+            return token, user_data
+
+        except Exception as e:
+            st.error(f"Auth error: {e}")
+            return None, None
+
+
+# ------------------------------
+# Initialize Authentication
+# ------------------------------
+if "auth" not in st.session_state:
+    st.session_state.auth = None
+
 def initialize_auth():
     """Initialize the WordPressAuth instance with secrets."""
     try:
@@ -30,138 +61,141 @@ def initialize_auth():
         api_key = st.secrets["general"]["api_key"]
         return WordpressAuth(api_key=api_key, base_url=base_url)
     except KeyError as e:
-        st.error(f"Missing secret configuration: {e}")
+        st.error(f"Missing secret: {e}")
         st.stop()
 
-# ------------------------
-# Handle login
-# ------------------------
-def handle_login(username, password, auth):
-    """Authenticate user and verify role."""
-    try:
-        token = auth.get_token(username, password)
-        if not token:
-            st.error("❌ **Invalid username or password.** Please try again.")
-            return False
+def login(username, password):
+    """Handle user login process."""
+    auth = st.session_state.auth
+    if auth:
+        token, user_data = auth.get_token(username, password)
+        if token:
+            # Check user role(s)
+            user_roles = user_data.get("roles", [])
 
-        if not auth.verify_token(token):
-            st.error("❌ **Token verification failed.**")
-            return False
+            if "subscriber" in user_roles:   # ❌ Block only subscriber role
+                st.error("🚫 Access denied. Subscriber accounts are not allowed.")
+                st.session_state.authenticated = False
+                return
 
-        user_role = auth.get_user_role(token)
-        if not user_role:
-            st.error("❌ Could not determine your user role.")
-            return False
+            # Allow login for all other roles (including customer)
+            st.session_state.authenticated = True
+            st.session_state.token = token
+            st.session_state.user_roles = user_roles
+            st.success("✅ Login successful!")
+        else:
+            st.error("❌ Invalid username or password")
+    else:
+        st.error("Authentication system is not initialized.")
 
-        user_role = user_role.lower()
 
-        # Deny access for 'customer'
-        if user_role == 'customer':
-            st.error("🚫 **Access Denied**")
-            st.warning("""
-            ### Your account needs to be upgraded to access VIP Credit Systems.
-            
-            **Options to get access:**
-            - 🌟 [**Join our VIP Program**](https://vipbusinesscredit.com/)
-            - 💳 [**Update your payment information**](https://vipbusinesscredit.com/)
-            
-            **VIP benefits:**
-            - Complete credit monitoring
-            - Advanced credit building tools
-            - Expert guidance & personalized support
-            - Business credit optimization strategies
-            """)
-            return False
+# ------------------------------
+# Streamlit App Config
+# ------------------------------
+st.set_page_config(
+    page_title="VIP Credit Systems",
+    page_icon="💳",
+    layout="wide"
+)
 
-        # Allow access for other roles
-        st.session_state.authenticated = True
-        st.session_state.user_role = user_role
-        st.session_state.token = token
-        st.success(f"✅ **Welcome!** Logged in as {user_role.title()}")
-        st.balloons()
-        st.info("🔄 Redirecting to your dashboard...")
-        st.rerun()
-        return True
+# Initialize authentication
+if st.session_state.auth is None:
+    st.session_state.auth = initialize_auth()
 
-    except Exception as e:
-        st.error(f"🚨 Login error: {str(e)}")
-        return False
+# Initialize authentication state
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
 
-# ------------------------
-# Login page UI
-# ------------------------
-def login_page():
-    """Display login interface."""
-    if st.session_state.authenticated:
-        st.success(f"✅ Already logged in as {st.session_state.user_role.title()}")
-        st.info("🏠 [Go to Home Page](Home)")
-        return
 
-    col1, col2, col3 = st.columns([1, 2, 1])
+# ------------------------------
+# Login Sidebar
+# ------------------------------
+if not st.session_state.authenticated:
+    with st.sidebar:
+        st.header("Login")
+        with st.form(key='login_form'):
+            username = st.text_input("Username")
+            password = st.text_input("Password", type="password")
+            login_button = st.form_submit_button("Login")
+
+        if login_button:
+            login(username, password)
+
+        st.sidebar.markdown("---")
+        st.sidebar.markdown("[Sign Up](https://vipbusinesscredit.com/)")
+
+
+# ------------------------------
+# Main Content (Only if logged in)
+# ------------------------------
+if st.session_state.authenticated:
+    with st.sidebar:
+        st.image("logooo.png", use_column_width=True)
+        st.success("Select a page above.")
+
+    col1, col2, col3 = st.columns([1,2,1])
+
     with col2:
-        # Logo
-        try:
-            st.image("logooo.png", use_column_width=True)
-        except:
-            st.title("💳 VIP Credit Systems")
+        st.image("logooo.png", use_column_width=True)
 
-        st.markdown("### 🔐 Login to Your Account")
-        st.markdown("Access your comprehensive credit management dashboard")
+        st.title("VIP Credit Systems")
+        st.subheader("Your Comprehensive Credit Management Solution")
 
-        # Login form
-        with st.form("login_form", clear_on_submit=False):
-            st.markdown("#### Enter Your Credentials")
-            username = st.text_input("Username", placeholder="Enter your username", help="Use your WordPress username")
-            password = st.text_input("Password", type="password", placeholder="Enter your password", help="Use your WordPress password")
+        st.write("""
+        Welcome to **VIP Credit Systems**, where managing your credit has never been easier. 
+        Our system provides a wide range of tools and insights to help you understand and optimize 
+        your credit profile. Below is a detailed list of features we offer.
+        """)
 
-            col_login, col_clear = st.columns([3, 1])
-            with col_login:
-                login_button = st.form_submit_button("🔐 Login", use_container_width=True, type="primary")
-            with col_clear:
-                clear_button = st.form_submit_button("🗑️ Clear")
+        st.markdown("""
+        ## Features:
+        
+        ### Credit Overview
+        - 📊 **Credit Score Overview**
+        - 💳 **Credit Utilization**
+        - 🗓️ **Payment History**
+        - 📑 **Credit Report Summary**
 
-            if login_button and username and password:
-                with st.spinner("🔄 Authenticating..."):
-                    auth = initialize_auth()
-                    handle_login(username, password, auth)
+        ### Account Management
+        - 🔍 **Credit Inquiries**
+        - 🎯 **Credit Limits**
+        - ⚖️ **Debt-to-Income Ratio**
+        - 💰 **Loan and Credit Card Balances**
 
-            if clear_button:
-                st.rerun()
+        ### Analytics and Insights
+        - ⏳ **Account Age**
+        - 💵 **Monthly Payments**
+        - 📂 **Credit Accounts Breakdown**
+        - 🏆 **Top 5 Highest Balances**
 
-        st.markdown("---")
-        st.markdown("### 🌟 New to VIP Credit Systems?")
+        ### Transactions and Payments
+        - 📝 **Top 5 Recent Transactions**
+        - 📅 **Upcoming Payments**
+        - 🔄 **Credit Utilization by Account Type**
+        - 📈 **Average Payment History**
 
-        col_join, col_info = st.columns([1, 1])
-        with col_join:
-            st.markdown("""
-            **Ready to take control of your credit?**
-            [**🚀 Join VIP Business Credit →**](https://vipbusinesscredit.com/)
-            """)
-        with col_info:
-            st.markdown("""
-            **What's included:**
-            - ✅ Complete credit monitoring
-            - ✅ Business credit building tools  
-            - ✅ Expert guidance & support
-            - ✅ Personalized strategies
-            """)
+        ### Trends and Forecasting
+        - 📊 **Credit Score Trend**
+        - 💸 **Monthly Spending Trend**
+        - 📉 **Credit Score vs. Credit Utilization**
+        - 📅 **Debt Repayment Schedule**
 
-        st.markdown("---")
-        with st.expander("❓ Need Help?"):
-            st.markdown("""
-            **Having trouble logging in?**
-            - Use your WordPress credentials
-            - Ensure your account is active with proper permissions
-            - Contact support if issues persist
+        ### Credit Management Tools
+        - 🆕 **New Credit Accounts**
+        - 🧠 **Credit Score Impact Simulation**
+        - 📉 **Debt Reduction Plan**
+        - 💡 **Credit Score Improvement Tips**
 
-            **Account Access Levels:**
-            - ✅ **Administrator** - Full system access
-            - ✅ **Subscriber** - Credit dashboard access  
-            - ✅ **Editor/Author** - Standard access
-            - ❌ **Customer** - Requires VIP upgrade
-            """)
+        ### Customization and Alerts
+        - ⚠️ **Alerts and Recommendations**
+        - ✏️ **Edit Credit Info**
+        - 📤 **Export Data**
+        """)
 
-# ------------------------
-# Run the page
-# ------------------------
-login_page()
+        st.write("""
+        Explore these features and more in the VIP Credit Systems app. 
+        Whether you are looking to improve your credit score, manage your debts, 
+        or simply stay on top of your financial health, we've got you covered.
+        """)
+else:
+    st.write("🔐 Please log in to access the VIP Credit Systems.")
