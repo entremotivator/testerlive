@@ -157,7 +157,7 @@ def cache_user_data(user_data: Dict):
         try:
             supabase.table("user_sessions").upsert({
                 "user_id": user_data["user_id"],
-                "last_login": datetime.datetime.utcnow().isoformat(),
+                "last_login": datetime.datetime.now(datetime.timezone.utc).isoformat(),
                 "user_data": user_data
             }).execute()
         except Exception as e:
