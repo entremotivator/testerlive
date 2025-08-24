@@ -58,8 +58,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ------------------------
-# Configuration & Setup
-# ------------------------
+## ---------------- Supabase ----------------
 @st.cache_resource
 def init_supabase():
     """Initialize Supabase client with caching"""
@@ -71,12 +70,16 @@ def init_supabase():
         st.error(f"Failed to initialize Supabase: {e}")
         return None
 
+
+# ---------------- Config ----------------
 @st.cache_data
 def get_config():
     """Get configuration with error handling"""
     try:
         return {
-            "wp_url": st.secrets["wordpress"]["url"],
+            "wp_url": st.secrets["wordpress"]["base_url"],   # FIXED (was 'url')
+            "wp_user": st.secrets["wordpress"]["username"],
+            "wp_pass": st.secrets["wordpress"]["password"],
             "wc_key": st.secrets["woocommerce"]["consumer_key"],
             "wc_secret": st.secrets["woocommerce"]["consumer_secret"],
             "rentcast_key": st.secrets["rentcast"]["api_key"],
@@ -86,6 +89,8 @@ def get_config():
         st.error(f"Configuration error: {e}")
         return None
 
+
+# ---------------- Init ----------------
 supabase = init_supabase()
 config = get_config()
 
