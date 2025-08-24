@@ -58,7 +58,8 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ------------------------
-## ---------------- Supabase ----------------
+# Init Supabase
+# ------------------------
 @st.cache_resource
 def init_supabase():
     """Initialize Supabase client with caching"""
@@ -71,13 +72,15 @@ def init_supabase():
         return None
 
 
-# ---------------- Config ----------------
+# ------------------------
+# Config Loader
+# ------------------------
 @st.cache_data
 def get_config():
     """Get configuration with error handling"""
     try:
         return {
-            "wp_url": st.secrets["wordpress"]["base_url"],   # FIXED (was 'url')
+            "wp_url": st.secrets["wordpress"]["base_url"],
             "wp_user": st.secrets["wordpress"]["username"],
             "wp_pass": st.secrets["wordpress"]["password"],
             "wc_key": st.secrets["woocommerce"]["consumer_key"],
@@ -90,45 +93,67 @@ def get_config():
         return None
 
 
-# ---------------- Init ----------------
 supabase = init_supabase()
 config = get_config()
 
+
 # ------------------------
-# Authentication Functions
+# WordPress Login
 # ------------------------
 def wp_login(username: str, password: str) -> Optional[Dict]:
-    """Enhanced WordPress JWT authentication with better error handling"""
+    """WordPress JWT authentication with user ID fetch"""
     if not config:
         return None
-        
+
     url = f"{config['wp_url']}/wp-json/jwt-auth/v1/token"
-    
+
     try:
         with st.spinner("Authenticating..."):
             resp = requests.post(
-                url, 
+                url,
                 data={"username": username, "password": password},
                 timeout=10
             )
-            
+
         if resp.status_code == 200:
-            user_data = resp.json()
-            # Cache user permissions and metadata
-            cache_user_data(user_data)
-            return user_data
+            token_data = resp.json()
+
+            # Fetch user details (to get WordPress user ID)
+            me_url = f"{config['wp_url']}/wp-json/wp/v2/users/me"
+            me_resp = requests.get(
+                me_url,
+                headers={"Authorization": f"Bearer {token_data['token']}"},
+                timeout=10
+            )
+
+            if me_resp.status_code == 200:
+                user_info = me_resp.json()
+                token_data["user_id"] = user_info.get("id")
+                token_data["user_email"] = user_info.get("email")
+                token_data["username"] = user_info.get("username", token_data.get("user_nicename"))
+            else:
+                st.warning(f"⚠️ Could not fetch user info: {me_resp.text}")
+
+            # Cache user session in Supabase
+            cache_user_data(token_data)
+            return token_data
+
         else:
             error_msg = resp.json().get('message', resp.text) if resp.text else 'Unknown error'
             st.error(f"🚫 Login failed: {error_msg}")
             return None
-            
+
     except requests.exceptions.RequestException as e:
         st.error(f"🌐 Connection error: {e}")
         return None
 
+
+# ------------------------
+# Cache User Data
+# ------------------------
 def cache_user_data(user_data: Dict):
     """Cache user data for session management"""
-    if supabase:
+    if supabase and "user_id" in user_data:
         try:
             supabase.table("user_sessions").upsert({
                 "user_id": user_data["user_id"],
@@ -138,15 +163,16 @@ def cache_user_data(user_data: Dict):
         except Exception as e:
             st.warning(f"Failed to cache user data: {e}")
 
+
 # ------------------------
 # WooCommerce Integration
 # ------------------------
 @st.cache_data(ttl=300)  # Cache for 5 minutes
 def get_wc_orders(user_id: int) -> List[Dict]:
-    """Get WooCommerce orders with enhanced data and caching"""
+    """Get WooCommerce orders for a customer"""
     if not config:
         return []
-        
+
     url = f"{config['wp_url']}/wp-json/wc/v3/orders"
     params = {
         "customer": user_id,
@@ -154,15 +180,15 @@ def get_wc_orders(user_id: int) -> List[Dict]:
         "orderby": "date",
         "order": "desc"
     }
-    
+
     try:
         resp = requests.get(
-            url, 
-            auth=(config['wc_key'], config['wc_secret']), 
+            url,
+            auth=(config['wc_key'], config['wc_secret']),
             params=params,
             timeout=15
         )
-        
+
         if resp.status_code == 200:
             orders = resp.json()
             # Enrich order data
@@ -175,7 +201,7 @@ def get_wc_orders(user_id: int) -> List[Dict]:
         else:
             st.error(f"🛒 WooCommerce API error: {resp.text}")
             return []
-            
+
     except requests.exceptions.RequestException as e:
         st.error(f"🌐 Failed to fetch orders: {e}")
         return []
