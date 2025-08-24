@@ -10,3 +10,4 @@ requests
 wordpress_auth
 supabase
 datetime
+aiohttp
