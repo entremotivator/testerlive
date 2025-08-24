@@ -4,9 +4,3 @@
 # For PostgreSQL connections (Supabase)
 libpq-dev
 
-# For SSL/TLS connections
-ca-certificates
-
-# For image processing (if needed)
-libgl1-mesa-glx
-libglib2.0-0
