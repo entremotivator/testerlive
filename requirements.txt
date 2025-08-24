@@ -8,7 +8,7 @@ pydantic>=2.0.0
 httpx>=0.24.0
 asyncio>=3.4.3
 typing-extensions>=4.7.0
-hashlib2>=1.0.0
+hashlib2
 uuid>=1.30
 logging>=0.4.9.6
 datetime>=5.2
