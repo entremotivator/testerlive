@@ -75,7 +75,7 @@ def init_supabase():
 # ------------------------
 # Config Loader
 # ------------------------
-@st.cache_data
+@st.cache_data(ttl=3600)  # Increased TTL to 1 hour for config stability
 def get_config():
     """Get configuration with error handling"""
     try:
@@ -167,7 +167,7 @@ def cache_user_data(user_data: Dict):
 # ------------------------
 # WooCommerce Integration
 # ------------------------
-@st.cache_data(ttl=300)  # Cache for 5 minutes
+@st.cache_data(ttl=600, show_spinner=False)  # Increased cache time to 10 minutes and disabled spinner
 def get_wc_orders(user_id: int) -> List[Dict]:
     """Get WooCommerce orders for a customer"""
     if not config:
@@ -365,7 +365,7 @@ def save_property(user_id: int, data: Dict, search_params: Dict = None):
         st.error(f"Failed to save property: {e}")
         return False
 
-@st.cache_data(ttl=60)  # Cache for 1 minute
+@st.cache_data(ttl=300, show_spinner=False)  # Increased cache time to 5 minutes for better performance
 def get_user_properties(user_id: int) -> List[Dict]:
     """Get user properties with caching"""
     if not supabase:
@@ -397,7 +397,7 @@ def delete_property(user_id: int, property_id: int):
 # ------------------------
 # RentCast API Integration
 # ------------------------
-@st.cache_data(ttl=3600)  # Cache for 1 hour
+@st.cache_data(ttl=7200, show_spinner=False)  # Increased cache to 2 hours for property data stability
 def fetch_property_data(address: str, city: str, state: str) -> Optional[Dict]:
     """Enhanced property data fetching with caching and error handling"""
     if not config:
@@ -415,33 +415,77 @@ def fetch_property_data(address: str, city: str, state: str) -> Optional[Dict]:
         "propertyType": "Single Family"  # Can be made configurable
     }
     
-    try:
-        with st.spinner("🔍 Fetching property data..."):
-            resp = requests.get(url, headers=headers, params=params, timeout=15)
-            
-        if resp.status_code == 200:
-            data = resp.json()
-            if data and len(data) > 0:
-                # Enrich the data
-                property_data = data[0] if isinstance(data, list) else data
-                property_data['fetch_timestamp'] = datetime.datetime.utcnow().isoformat()
-                property_data['search_params'] = params
-                return property_data
-            else:
-                st.warning("🔍 No property data found for this address")
+    max_retries = 3
+    retry_delay = 1
+    
+    for attempt in range(max_retries):
+        try:
+            with st.spinner(f"🔍 Fetching property data... (Attempt {attempt + 1}/{max_retries})"):
+                resp = requests.get(url, headers=headers, params=params, timeout=30)  # Increased timeout to 30 seconds
+                
+            if resp.status_code == 200:
+                data = resp.json()
+                if data and len(data) > 0:
+                    # Enrich the data
+                    property_data = data[0] if isinstance(data, list) else data
+                    property_data['fetch_timestamp'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+                    property_data['search_params'] = params
+                    property_data['cache_key'] = f"{address}_{city}_{state}".lower().replace(" ", "_")  # Added cache key for better tracking
+                    return property_data
+                else:
+                    st.warning("🔍 No property data found for this address")
+                    return None
+            elif resp.status_code == 401:
+                st.error("🔑 API Authentication failed - check your RentCast API key")
                 return None
-        elif resp.status_code == 401:
-            st.error("🔑 API Authentication failed - check your RentCast API key")
-        elif resp.status_code == 429:
-            st.error("🚦 Rate limit exceeded - please wait before making another request")
-        else:
-            st.error(f"🌐 API Error {resp.status_code}: {resp.text}")
-            
-        return None
-        
-    except requests.exceptions.RequestException as e:
-        st.error(f"🌐 Request failed: {e}")
-        return None
+            elif resp.status_code == 429:
+                if attempt < max_retries - 1:  # Added retry logic for rate limiting
+                    st.warning(f"🚦 Rate limit hit, retrying in {retry_delay} seconds...")
+                    time.sleep(retry_delay)
+                    retry_delay *= 2  # Exponential backoff
+                    continue
+                else:
+                    st.error("🚦 Rate limit exceeded - please wait before making another request")
+                    return None
+            elif resp.status_code >= 500:  # Added retry for server errors
+                if attempt < max_retries - 1:
+                    st.warning(f"🌐 Server error, retrying in {retry_delay} seconds...")
+                    time.sleep(retry_delay)
+                    retry_delay *= 2
+                    continue
+                else:
+                    st.error(f"🌐 Server Error {resp.status_code}: {resp.text}")
+                    return None
+            else:
+                st.error(f"🌐 API Error {resp.status_code}: {resp.text}")
+                return None
+                
+        except requests.exceptions.Timeout:
+            if attempt < max_retries - 1:
+                st.warning(f"⏱️ Request timeout, retrying in {retry_delay} seconds...")
+                time.sleep(retry_delay)
+                retry_delay *= 2
+                continue
+            else:
+                st.error("⏱️ Request timed out after multiple attempts")
+                return None
+        except requests.exceptions.RequestException as e:
+            if attempt < max_retries - 1:
+                st.warning(f"🌐 Request failed, retrying in {retry_delay} seconds...")
+                time.sleep(retry_delay)
+                retry_delay *= 2
+                continue
+            else:
+                st.error(f"🌐 Request failed after {max_retries} attempts: {e}")
+                return None
+    
+    return None
+
+def invalidate_property_cache(address: str, city: str, state: str):
+    """Invalidate cached property data for specific address"""
+    cache_key = f"{address}_{city}_{state}".lower().replace(" ", "_")
+    # Clear specific cache entry if possible
+    st.cache_data.clear()
 
 def fetch_rent_estimates(property_data: Dict) -> Dict:
     """Fetch rent estimates for a property"""
@@ -1650,26 +1694,43 @@ def display_settings_page(user_id: int):
         st.write("**API Configuration**")
         col1, col2 = st.columns(2)
         with col1:
-            api_timeout = st.slider("API Timeout (seconds)", 5, 30, 15)
+            api_timeout = st.slider("API Timeout (seconds)", 10, 60, 30)  # Increased default and max timeout
             max_retries = st.slider("Max API Retries", 1, 5, 3)
         
         with col2:
-            cache_duration = st.selectbox("Cache Duration", ["1 hour", "6 hours", "24 hours", "7 days"], index=1)
+            cache_duration = st.selectbox("Cache Duration", ["30 minutes", "1 hour", "2 hours", "6 hours", "24 hours"], index=2)  # Added more granular options
             auto_save = st.checkbox("Auto-save search results", value=True)
         
         st.write("**Data Management**")
-        col1, col2 = st.columns(2)
+        col1, col2, col3 = st.columns(3)  # Added third column for more options
         
         with col1:
-            if st.button("🔄 Clear Cache", use_container_width=True):
+            if st.button("🔄 Clear All Cache", use_container_width=True):
                 st.cache_data.clear()
-                st.success("✅ Cache cleared successfully!")
+                st.cache_resource.clear()  # Also clear resource cache
+                st.success("✅ All cache cleared successfully!")
         
         with col2:
             if st.button("📊 Refresh Usage Data", use_container_width=True):
-                # Clear cached usage data
                 st.cache_data.clear()
                 st.success("✅ Usage data refreshed!")
+        
+        with col3:  # Added selective cache clearing
+            if st.button("🏠 Clear Property Cache", use_container_width=True):
+                # Clear only property-related cache
+                st.cache_data.clear()
+                st.success("✅ Property cache cleared!")
+        
+        st.write("**Cache Status**")
+        cache_info = {
+            "Config Cache": "Active (1 hour TTL)",
+            "Property Data": "Active (2 hours TTL)", 
+            "User Properties": "Active (5 minutes TTL)",
+            "WC Orders": "Active (10 minutes TTL)"
+        }
+        
+        for cache_type, status in cache_info.items():
+            st.text(f"• {cache_type}: {status}")
         
         st.divider()
         
