@@ -19,7 +19,7 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
-
+st.write("🔍 wp_user =", wp_user)
 # Custom CSS for better styling
 st.markdown("""
 <style>
