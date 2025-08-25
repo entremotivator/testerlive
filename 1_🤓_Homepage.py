@@ -6,8 +6,10 @@ from supabase import create_client, Client
 # Supabase Setup
 # ----------------------
 SUPABASE_URL = st.secrets["supabase"]["url"]
-SUPABASE_KEY = st.secrets["supabase"]["key"]
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)  # Service client
+SUPABASE_ANON_KEY = st.secrets["supabase"]["anon_key"]  # for auth operations
+SUPABASE_SERVICE_KEY = st.secrets["supabase"]["service_key"]  # optional, for admin tasks
+
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)  # user client by default
 
 # ----------------------
 # RentCast Setup
@@ -20,10 +22,10 @@ MAX_QUERIES = 30
 # Helpers
 # ----------------------
 def get_user_client():
-    """Return a Supabase client authorized with the current user’s token."""
+    """Return a Supabase client authorized with the current user’s access token."""
     if "access_token" not in st.session_state:
         return None
-    client = create_client(SUPABASE_URL, SUPABASE_KEY)
+    client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
     client.postgrest.auth(st.session_state.access_token)
     return client
 
@@ -79,6 +81,7 @@ def get_user_usage(user_id, email):
     if response.data:
         return response.data[0]["queries"]
     else:
+        # create row if missing
         client.table("api_usage").insert({
             "user_id": str(user_id),
             "email": email,
