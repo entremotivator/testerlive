@@ -6,10 +6,8 @@ from supabase import create_client, Client
 # Supabase Setup
 # ----------------------
 SUPABASE_URL = st.secrets["supabase"]["url"]
-SUPABASE_ANON_KEY = st.secrets["supabase"]["anon_key"]  # for auth operations
-SUPABASE_SERVICE_KEY = st.secrets["supabase"]["service_key"]  # optional, for admin tasks
-
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)  # user client by default
+SUPABASE_ANON_KEY = st.secrets["supabase"]["anon_key"]  # anon key for auth
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
 
 # ----------------------
 # RentCast Setup
@@ -22,7 +20,7 @@ MAX_QUERIES = 30
 # Helpers
 # ----------------------
 def get_user_client():
-    """Return a Supabase client authorized with the current user’s access token."""
+    """Return a Supabase client authorized with the current user's access token."""
     if "access_token" not in st.session_state:
         return None
     client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
@@ -164,3 +162,4 @@ else:
         st.session_state.user = None
         st.session_state.access_token = None
         st.success("Logged out successfully!")
+
