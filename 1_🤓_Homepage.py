@@ -20,7 +20,6 @@ MAX_QUERIES = 30
 # Authentication
 # ----------------------
 def login(email, password):
-    """Login existing user"""
     try:
         user = supabase.auth.sign_in_with_password({
             "email": email,
@@ -32,13 +31,12 @@ def login(email, password):
         return None
 
 def signup(email, password):
-    """Register a new user and initialize usage record"""
     try:
         user = supabase.auth.sign_up({
             "email": email,
             "password": password
         })
-        # Initialize API usage tracking
+        # Create usage record for new user
         if user and user.user:
             supabase.table("api_usage").insert({
                 "user_id": user.user.id,
@@ -54,7 +52,6 @@ def signup(email, password):
 # Query Tracker
 # ----------------------
 def get_user_usage(user_id, email):
-    """Fetch current query usage, initialize if missing"""
     response = supabase.table("api_usage").select("*").eq("user_id", user_id).execute()
     if response.data:
         return response.data[0]["queries"]
@@ -67,7 +64,6 @@ def get_user_usage(user_id, email):
         return 0
 
 def increment_usage(user_id):
-    """Increment query count for user"""
     usage = get_user_usage(user_id, "")
     supabase.table("api_usage").update({
         "queries": usage + 1
@@ -77,16 +73,12 @@ def increment_usage(user_id):
 # RentCast Request
 # ----------------------
 def fetch_property_details(address, user_id, email):
-    """Call RentCast API for property details"""
     usage = get_user_usage(user_id, email)
     if usage >= MAX_QUERIES:
-        st.error("🚫 You have reached your 30 API query limit.")
+        st.error("You have reached your 30 API query limit.")
         return None
-
-    headers = {
-        "accept": "application/json",
-        "X-Api-Key": RENTCAST_API_KEY
-    }
+    
+    headers = {"accept": "application/json", "X-Api-Key": RENTCAST_API_KEY}
     params = {"address": address}
     response = requests.get(f"{RENTCAST_BASE_URL}/properties", headers=headers, params=params)
 
@@ -94,57 +86,54 @@ def fetch_property_details(address, user_id, email):
         increment_usage(user_id)
         return response.json()
     else:
-        st.error("⚠️ Error fetching data from RentCast API.")
+        st.error("Error fetching data from RentCast API.")
         return None
 
 # ----------------------
 # Streamlit App UI
 # ----------------------
-st.set_page_config(page_title="🏡 RentCast API App", page_icon="🏠")
 st.title("🏡 RentCast API with Supabase Auth")
 
-# Session State init
 if "user" not in st.session_state:
     st.session_state.user = None
 
-# Not logged in → show login/signup tabs
 if st.session_state.user is None:
-    tab1, tab2 = st.tabs(["🔑 Login", "🆕 Sign Up"])
+    tab1, tab2 = st.tabs(["Login", "Sign Up"])
 
     with tab1:
-        email = st.text_input("Email", key="login_email")
-        password = st.text_input("Password", type="password", key="login_pw")
+        email = st.text_input("Email (Login)", key="login_email")
+        password = st.text_input("Password (Login)", type="password", key="login_pw")
         if st.button("Login"):
             user = login(email, password)
             if user:
                 st.session_state.user = user
-                st.success("✅ Logged in successfully!")
+                st.success("Logged in successfully!")
 
     with tab2:
-        email = st.text_input("Email", key="signup_email")
-        password = st.text_input("Password", type="password", key="signup_pw")
+        email = st.text_input("Email (Signup)", key="signup_email")
+        password = st.text_input("Password (Signup)", type="password", key="signup_pw")
         if st.button("Sign Up"):
             user = signup(email, password)
             if user:
-                st.success("🎉 Account created! Please log in.")
+                st.success("Account created! Please log in.")
 
-# Logged in → main app
 else:
     user_id = st.session_state.user.user.id
     email = st.session_state.user.user.email
+    st.success(f"Welcome {email}!")
 
-    st.success(f"👋 Welcome {email}!")
-
-    st.subheader("🏠 Search Property on RentCast")
+    st.subheader("Search Property on RentCast")
     address = st.text_input("Enter Property Address")
 
     if st.button("Fetch Property"):
         data = fetch_property_details(address, user_id, email)
         if data:
             st.json(data)
-            queries_used = get_user_usage(user_id, email)
-            st.info(f"🔢 API Queries Used: {queries_used}/{MAX_QUERIES}")
+
+    queries_used = get_user_usage(user_id, email)
+    st.info(f"API Queries Used: {queries_used}/{MAX_QUERIES}")
 
     if st.button("Logout"):
         st.session_state.user = None
-        st.success("👋 Logged out successfully!")
+        st.success("Logged out successfully!")
+
