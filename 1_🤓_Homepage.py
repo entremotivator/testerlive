@@ -1,7 +1,6 @@
 import streamlit as st
 import requests
 from supabase import create_client, Client
-import os
 
 # ----------------------
 # Supabase Setup
@@ -37,7 +36,13 @@ def signup(email, password):
             "email": email,
             "password": password
         })
-        supabase.table("usage").insert({"email": email, "queries": 0}).execute()
+        # Create usage record for new user
+        if user and user.user:
+            supabase.table("api_usage").insert({
+                "user_id": user.user.id,
+                "email": email,
+                "queries": 0
+            }).execute()
         return user
     except Exception as e:
         st.error(f"Signup failed: {e}")
@@ -46,23 +51,29 @@ def signup(email, password):
 # ----------------------
 # Query Tracker
 # ----------------------
-def get_user_usage(email):
-    response = supabase.table("usage").select("*").eq("email", email).execute()
+def get_user_usage(user_id, email):
+    response = supabase.table("api_usage").select("*").eq("user_id", user_id).execute()
     if response.data:
         return response.data[0]["queries"]
     else:
-        supabase.table("usage").insert({"email": email, "queries": 0}).execute()
+        supabase.table("api_usage").insert({
+            "user_id": user_id,
+            "email": email,
+            "queries": 0
+        }).execute()
         return 0
 
-def increment_usage(email):
-    current = get_user_usage(email)
-    supabase.table("usage").update({"queries": current + 1}).eq("email", email).execute()
+def increment_usage(user_id):
+    usage = get_user_usage(user_id, "")
+    supabase.table("api_usage").update({
+        "queries": usage + 1
+    }).eq("user_id", user_id).execute()
 
 # ----------------------
 # RentCast Request
 # ----------------------
-def fetch_property_details(address, email):
-    usage = get_user_usage(email)
+def fetch_property_details(address, user_id, email):
+    usage = get_user_usage(user_id, email)
     if usage >= MAX_QUERIES:
         st.error("You have reached your 30 API query limit.")
         return None
@@ -72,7 +83,7 @@ def fetch_property_details(address, email):
     response = requests.get(f"{RENTCAST_BASE_URL}/properties", headers=headers, params=params)
 
     if response.status_code == 200:
-        increment_usage(email)
+        increment_usage(user_id)
         return response.json()
     else:
         st.error("Error fetching data from RentCast API.")
@@ -107,18 +118,19 @@ if st.session_state.user is None:
                 st.success("Account created! Please log in.")
 
 else:
-    st.success(f"Welcome {st.session_state.user.user.email}!")
+    user_id = st.session_state.user.user.id
     email = st.session_state.user.user.email
+    st.success(f"Welcome {email}!")
 
     st.subheader("Search Property on RentCast")
     address = st.text_input("Enter Property Address")
 
     if st.button("Fetch Property"):
-        data = fetch_property_details(address, email)
+        data = fetch_property_details(address, user_id, email)
         if data:
             st.json(data)
 
-    queries_used = get_user_usage(email)
+    queries_used = get_user_usage(user_id, email)
     st.info(f"API Queries Used: {queries_used}/{MAX_QUERIES}")
 
     if st.button("Logout"):
