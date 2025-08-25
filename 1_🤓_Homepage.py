@@ -6,7 +6,7 @@ from supabase import create_client, Client
 # Supabase Setup
 # ----------------------
 SUPABASE_URL = st.secrets["supabase"]["url"]
-SUPABASE_ANON_KEY = st.secrets["supabase"]["anon_key"]  # anon key for auth
+SUPABASE_ANON_KEY = st.secrets["supabase"]["anon_key"]  # Use anon key for auth
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
 
 # ----------------------
@@ -20,7 +20,7 @@ MAX_QUERIES = 30
 # Helpers
 # ----------------------
 def get_user_client():
-    """Return a Supabase client authorized with the current user's access token."""
+    """Return Supabase client authorized with current user's access token."""
     if "access_token" not in st.session_state:
         return None
     client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
@@ -54,7 +54,7 @@ def signup(email, password):
             st.session_state.access_token = user.session.access_token
             st.session_state.user = user.user
 
-            # Insert usage row under user context
+            # Create usage record for new user under their own context
             client = get_user_client()
             if client:
                 client.table("api_usage").insert({
@@ -74,12 +74,10 @@ def get_user_usage(user_id, email):
     client = get_user_client()
     if not client:
         return 0
-
     response = client.table("api_usage").select("*").eq("user_id", user_id).execute()
     if response.data:
         return response.data[0]["queries"]
     else:
-        # create row if missing
         client.table("api_usage").insert({
             "user_id": str(user_id),
             "email": email,
@@ -162,4 +160,3 @@ else:
         st.session_state.user = None
         st.session_state.access_token = None
         st.success("Logged out successfully!")
-
