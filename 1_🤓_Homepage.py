@@ -71,7 +71,7 @@ def init_supabase():
         st.error(f"Failed to initialize Supabase: {e}")
         return None
 
-
+now = datetime.now(timezone.utc)
 # ------------------------
 # Config Loader
 # ------------------------
