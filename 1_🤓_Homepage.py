@@ -1,6 +1,6 @@
 import streamlit as st
 import requests
-import datetime
+from datetime import datetime, timezone
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
